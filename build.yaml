@@ -1,0 +1,21 @@
+# Drift code-generation options.
+#
+# use_sql_column_name_as_json_key makes the generated toJson()/fromJson() use the
+# SQL column names — occurred_at, local_date, tz_offset_min — instead of the Dart
+# getter names — occurredAt, localDate, tzOffsetMin. It defaults to false.
+#
+# This is deliberate, not a style preference. SPEC.md §2.1 names every column in
+# snake_case, and the JSON export in phase 07 is meant to be readable against
+# that schema. Without this option an export would describe itself in a different
+# vocabulary from the document that defines it, and anyone mapping an export back
+# to the spec would have to translate every field name by hand.
+#
+# After editing this file, regenerate:
+#   dart run build_runner build --delete-conflicting-outputs
+
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          use_sql_column_name_as_json_key: true
