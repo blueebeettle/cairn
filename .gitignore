@@ -48,6 +48,8 @@ app.*.map.json
 **/key.properties
 *.jks
 *.keystore
+*credentials*.txt
+KEYSTORE_CREDENTIALS.txt
 
 # Assistant outputs
 Claude outputs/
