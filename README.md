@@ -9,12 +9,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/blueebeettle/cairn/actions/workflows/ci.yml"><img src="https://github.com/blueebeettle/cairn/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white" alt="Flutter" />
   <img src="https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart&logoColor=white" alt="Dart" />
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Desktop-4CAF50" alt="Platform" />
   <img src="https://img.shields.io/badge/Database-Drift%20(SQLite)-003B57" alt="Database" />
   <img src="https://img.shields.io/badge/Tests-389%20passed-success" alt="Tests" />
   <img src="https://img.shields.io/badge/Architecture-Event--Sourced-8B3FAE" alt="Architecture" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
 </p>
 
 ---
@@ -217,6 +219,28 @@ flutter test test/font_scale_200_audit_test.dart
 
 ---
 
+## 📚 Documentation
+
+Detailed technical documents, architectural designs, and deployment checklists can be found in the [`docs/`](docs/) folder:
+
+- [**docs/SPEC.md**](docs/SPEC.md) — Comprehensive build specification, event-sourced schema, and time semantics.
+- [**docs/ACCOUNTS.md**](docs/ACCOUNTS.md) — Authentication setup, Google Sign-In SHA-1 certificates, and Row Level Security.
+- [**docs/POLISH.md**](docs/POLISH.md) — Design tokens, visual consistency, and 200% font scale accessibility guidelines.
+- [**docs/RELEASE.md**](docs/RELEASE.md) — Production build generation, Android keystore signing, and release readiness.
+- [**docs/SUPABASE.md**](docs/SUPABASE.md) — Cloud backup database policies and storage lockdown.
+
+---
+
+## 🤝 Contributing & Community
+
+Contributions are welcome! Please check our community guidelines before getting started:
+- [**Contributing Guide**](CONTRIBUTING.md) — Development setup, code generation, and pull request guidelines.
+- [**Code of Conduct**](CODE_OF_CONDUCT.md) — Community standards and pledge.
+- [**Security Policy**](SECURITY.md) — Vulnerability reporting and encryption disclosure process.
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+
