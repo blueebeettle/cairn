@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:home_widget/home_widget.dart';
+
 import '../../../data/providers/database_provider.dart';
 import '../../../data/providers/habit_providers.dart';
 import '../../habits/presentation/habit_detail_screen.dart';
@@ -12,6 +14,7 @@ import '../../stats/presentation/stats_screen.dart';
 import '../../tasks/presentation/tasks_screen.dart';
 import '../../timer/presentation/timer_screen.dart';
 import '../../today/presentation/today_screen.dart';
+import '../../widgets/home_screen_widget_service.dart';
 
 /// Root navigation shell with Material 3 NavigationBar per SPEC.md Phase 01.
 ///
@@ -37,6 +40,7 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
 
   Timer? _dayWatch;
   String? _lastLogicalDay;
+  StreamSubscription<Uri?>? _widgetClickSub;
 
   @override
   void initState() {
@@ -48,11 +52,34 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
     // without this, an app left open overnight shows yesterday's pending day
     // as still pending, and a missed day never registers as missed.
     _dayWatch = Timer.periodic(const Duration(minutes: 1), (_) => _checkDay());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingHabit());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openPendingHabit();
+      _initWidgetDeepLinks();
+      ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
+    });
+  }
+
+  void _initWidgetDeepLinks() {
+    try {
+      HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
+        if (uri != null) _handleWidgetClick(uri);
+      });
+      _widgetClickSub = HomeWidget.widgetClicked.listen((uri) {
+        if (uri != null) _handleWidgetClick(uri);
+      });
+    } catch (_) {}
+  }
+
+  void _handleWidgetClick(Uri uri) {
+    final tab = HomeScreenWidgetService.parseWidgetUri(uri);
+    if (tab != null && mounted) {
+      ref.read(navigationIndexProvider.notifier).state = tab;
+    }
   }
 
   @override
   void dispose() {
+    _widgetClickSub?.cancel();
     _dayWatch?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -60,7 +87,10 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _checkDay(onResume: true);
+    if (state == AppLifecycleState.resumed) {
+      _checkDay(onResume: true);
+      ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
+    }
   }
 
   void _checkDay({bool onResume = false}) {
@@ -94,6 +124,18 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
     final currentIndex = ref.watch(navigationIndexProvider);
     ref.listen<String?>(pendingHabitDetailProvider, (_, next) {
       if (next != null) _openPendingHabit();
+    });
+
+    // Automatically synchronize home screen widgets on data updates
+    ref.listen(habitSnapshotsProvider, (_, next) {
+      ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
+    });
+    ref.listen(focusStatsStreamProvider, (_, next) {
+      ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
+    });
+    final todayDate = ref.watch(timeServiceProvider).todayLocalDate();
+    ref.listen(todayTasksStreamProvider(todayDate), (_, next) {
+      ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
     });
 
     return Scaffold(
