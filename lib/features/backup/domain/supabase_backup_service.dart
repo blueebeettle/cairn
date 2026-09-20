@@ -110,23 +110,6 @@ class SupabaseBackupService {
     );
   }
 
-  Future<AuthResponse> signInWithGoogle({
-    required String idToken,
-    String? accessToken,
-  }) async {
-    final initialized = await ensureInitialized();
-    if (!initialized || client == null) {
-      throw const SupabaseServiceException(
-        'Supabase is not configured. Please enter your Supabase Project URL and Anon Key first.',
-      );
-    }
-
-    return client!.auth.signInWithIdToken(
-      provider: OAuthProvider.google,
-      idToken: idToken,
-      accessToken: accessToken,
-    );
-  }
 
   Future<void> signOut() async {
     if (client != null) {

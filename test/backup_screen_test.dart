@@ -49,16 +49,19 @@ void main() {
       expect(find.text('Backup'), findsOneWidget);
       expect(find.text('Only you can open your backups'), findsOneWidget);
 
-      // Verify Recommended Card: Google Drive
-      expect(find.text('Back up to Google Drive'), findsOneWidget);
-      expect(find.text('Connect Google Drive'), findsOneWidget);
-
-      // Verify Alternatives Card
-      expect(find.text('Other ways to back up'), findsOneWidget);
-      expect(find.text('Save a file to this phone'), findsOneWidget);
+      // Verify Primary Card: Encrypted Backup File (.cairn)
+      expect(find.text('Encrypted Backup File (.cairn)'), findsOneWidget);
       expect(find.text('Save a backup file'), findsOneWidget);
       expect(find.text('Restore from backup file'), findsOneWidget);
-      expect(find.text('Use a Cairn account'), findsOneWidget);
+
+      // Verify Cloud Card
+      expect(find.text('Cairn Cloud Account'), findsOneWidget);
+      expect(find.text('Sign In or Register'), findsOneWidget);
+
+      // Verify CSV Export Card
+      expect(find.text('Plaintext Data Export (CSV)'), findsOneWidget);
+      expect(find.text('Export Habits (CSV)'), findsOneWidget);
+      expect(find.text('Export Focus Sessions (CSV)'), findsOneWidget);
 
       expect(tester.takeException(), isNull);
     });
@@ -98,23 +101,16 @@ void main() {
       expect(find.text('Set Backup Password'), findsNothing);
     });
 
-    testWidgets('Tapping Connect Google Drive opens connect dialog', (tester) async {
+    testWidgets('Displays Plaintext Data Export section with CSV export buttons', (tester) async {
       await tester.pumpWidget(buildTestApp(tester));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Connect Google Drive'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Connect Google Drive'), findsNWidgets(2)); // Card title + Dialog title
-      expect(find.text('Sign In with Google Account'), findsOneWidget);
-      expect(find.text('Google Account Email'), findsOneWidget);
-      expect(find.text('Connect'), findsOneWidget);
-
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
+      expect(find.text('Plaintext Data Export (CSV)'), findsOneWidget);
+      expect(find.text('Export Habits (CSV)'), findsOneWidget);
+      expect(find.text('Export Focus Sessions (CSV)'), findsOneWidget);
     });
 
-    testWidgets('Displays Cairn account sign in dialog with toggle and Google Sign-In', (tester) async {
+    testWidgets('Displays Cairn account sign in dialog with toggle', (tester) async {
       final settingsRepo = SettingsRepository(db: db);
       await settingsRepo.setString('supabase_url', 'https://xyzproject.supabase.co');
       await settingsRepo.setString('supabase_anon_key', 'public-anon-key-123');
@@ -131,7 +127,6 @@ void main() {
       expect(find.text('Email Address'), findsOneWidget);
       expect(find.text('Password'), findsOneWidget);
       expect(find.text('Sign In'), findsOneWidget);
-      expect(find.text('Continue with Google'), findsOneWidget);
 
       // Toggle to Sign Up
       await tester.tap(find.text("Don't have an account? Sign Up"));
@@ -139,7 +134,6 @@ void main() {
 
       expect(find.text('Create Cairn Account'), findsOneWidget);
       expect(find.text('Create Account'), findsOneWidget);
-      expect(find.text('Continue with Google'), findsOneWidget);
 
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();

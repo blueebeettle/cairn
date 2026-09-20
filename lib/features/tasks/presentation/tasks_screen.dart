@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/time/time_service.dart';
@@ -476,6 +478,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
           // Complete
+          unawaited(HapticFeedback.lightImpact().catchError((_) {}));
           await repo.completeTask(task.id);
           return true;
         } else if (direction == DismissDirection.endToStart) {
@@ -562,6 +565,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     child: Checkbox(
                       value: isDone,
                       onChanged: (val) async {
+                        unawaited(HapticFeedback.lightImpact().catchError((_) {}));
                         if (val == true) {
                           await repo.completeTask(task.id);
                         } else {

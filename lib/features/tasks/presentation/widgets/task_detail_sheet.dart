@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/notifications/notification_permission_helper.dart';
@@ -786,6 +788,7 @@ class _TaskDetailSheetState extends ConsumerState<TaskDetailSheet> {
                           leading: Checkbox(
                             value: st.status == 'done',
                             onChanged: (_) async {
+                              unawaited(HapticFeedback.lightImpact().catchError((_) {}));
                               if (st.status == 'done') {
                                 await repo.uncompleteTask(st.id);
                               } else {

@@ -4,7 +4,6 @@ import 'package:habit_tracker/data/providers/database_provider.dart';
 import 'package:habit_tracker/data/repositories/settings_repository.dart';
 import 'package:habit_tracker/features/backup/data/backup_storage.dart';
 import 'package:habit_tracker/features/backup/domain/backup_service.dart';
-import 'package:habit_tracker/features/backup/domain/google_drive_service.dart';
 import 'package:habit_tracker/features/backup/domain/supabase_backup_service.dart';
 import 'package:habit_tracker/features/reminders/reminder_service.dart';
 
@@ -18,8 +17,6 @@ class BackupState {
   final String? lastSuccessMessage;
   final PickedBackupFile? pendingFile;
   final BackupManifest? manifestPreview;
-  final bool isGoogleDriveConnected;
-  final String? googleUserEmail;
   final bool isSupabaseConfigured;
   final String? supabaseUrl;
   final bool isCloudAccountLoggedIn;
@@ -35,8 +32,6 @@ class BackupState {
     this.lastSuccessMessage,
     this.pendingFile,
     this.manifestPreview,
-    this.isGoogleDriveConnected = false,
-    this.googleUserEmail,
     this.isSupabaseConfigured = false,
     this.supabaseUrl,
     this.isCloudAccountLoggedIn = false,
@@ -55,8 +50,6 @@ class BackupState {
     bool clearPendingFile = false,
     BackupManifest? manifestPreview,
     bool clearManifestPreview = false,
-    bool? isGoogleDriveConnected,
-    String? googleUserEmail,
     bool? isSupabaseConfigured,
     String? supabaseUrl,
     bool? isCloudAccountLoggedIn,
@@ -73,9 +66,6 @@ class BackupState {
       pendingFile: clearPendingFile ? null : (pendingFile ?? this.pendingFile),
       manifestPreview:
           clearManifestPreview ? null : (manifestPreview ?? this.manifestPreview),
-      isGoogleDriveConnected:
-          isGoogleDriveConnected ?? this.isGoogleDriveConnected,
-      googleUserEmail: googleUserEmail ?? this.googleUserEmail,
       isSupabaseConfigured:
           isSupabaseConfigured ?? this.isSupabaseConfigured,
       supabaseUrl: supabaseUrl ?? this.supabaseUrl,
@@ -101,23 +91,17 @@ final supabaseBackupServiceProvider = Provider<SupabaseBackupService>((ref) {
   return SupabaseBackupService(settingsRepository: settingsRepo);
 });
 
-final googleDriveServiceProvider = Provider<GoogleDriveService>((ref) {
-  return GoogleDriveService();
-});
-
 final backupControllerProvider =
     StateNotifierProvider<BackupController, BackupState>((ref) {
   final backupService = ref.watch(backupServiceProvider);
   final storage = ref.watch(backupStorageProvider);
   final settingsRepo = ref.watch(settingsRepositoryProvider);
   final supabaseService = ref.watch(supabaseBackupServiceProvider);
-  final googleDriveService = ref.watch(googleDriveServiceProvider);
   return BackupController(
     backupService: backupService,
     storage: storage,
     settingsRepository: settingsRepo,
     supabaseService: supabaseService,
-    googleDriveService: googleDriveService,
   );
 });
 
@@ -126,21 +110,18 @@ class BackupController extends StateNotifier<BackupState> {
   final BackupStorage storage;
   final SettingsRepository settingsRepository;
   final SupabaseBackupService supabaseService;
-  final GoogleDriveService googleDriveService;
 
   BackupController({
     required this.backupService,
     required this.storage,
     required this.settingsRepository,
     required this.supabaseService,
-    required this.googleDriveService,
   }) : super(const BackupState()) {
     _loadInitialSettings();
   }
 
   Future<void> _loadInitialSettings() async {
     final lastBackup = await settingsRepository.getString('last_backup_at');
-    final googleEmail = await settingsRepository.getString('google_drive_email');
     final cloudEmail = await settingsRepository.getString('cloud_account_email');
     final configured = await supabaseService.isConfigured();
     final url = await supabaseService.getSupabaseUrl();
@@ -155,8 +136,6 @@ class BackupController extends StateNotifier<BackupState> {
 
     state = state.copyWith(
       lastBackupDate: lastBackup,
-      isGoogleDriveConnected: googleEmail != null && googleEmail.isNotEmpty,
-      googleUserEmail: googleEmail,
       isSupabaseConfigured: configured,
       supabaseUrl: url,
       isCloudAccountLoggedIn: loggedInEmail != null && loggedInEmail.isNotEmpty,
@@ -300,108 +279,7 @@ class BackupController extends StateNotifier<BackupState> {
     );
   }
 
-  // --- Tier 2: Google Drive Personal Cloud Connect / Disconnect ---
-
-  Future<bool> connectGoogleDrive([String? fallbackEmail]) async {
-    state = state.copyWith(lastErrorMessage: null, lastSuccessMessage: null);
-    try {
-      final account = await googleDriveService.signIn();
-      final email = account?.email ?? fallbackEmail;
-      if (email != null && email.isNotEmpty) {
-        await settingsRepository.setString('google_drive_email', email);
-        state = state.copyWith(
-          isGoogleDriveConnected: true,
-          googleUserEmail: email,
-          lastSuccessMessage: 'Connected to Google Drive ($email).',
-        );
-        return true;
-      }
-      return false;
-    } catch (e) {
-      if (fallbackEmail != null && fallbackEmail.isNotEmpty) {
-        await settingsRepository.setString('google_drive_email', fallbackEmail);
-        state = state.copyWith(
-          isGoogleDriveConnected: true,
-          googleUserEmail: fallbackEmail,
-          lastSuccessMessage: 'Connected to Google Drive ($fallbackEmail).',
-        );
-        return true;
-      }
-      state = state.copyWith(lastErrorMessage: 'Google Drive connection failed: $e');
-      return false;
-    }
-  }
-
-  Future<void> disconnectGoogleDrive() async {
-    try {
-      await googleDriveService.signOut();
-    } catch (_) {}
-    await settingsRepository.delete('google_drive_email');
-    state = state.copyWith(
-      isGoogleDriveConnected: false,
-      googleUserEmail: null,
-      lastSuccessMessage: 'Disconnected from Google Drive.',
-    );
-  }
-
-  Future<bool> backupToGoogleDrive({required String password}) async {
-    state = state.copyWith(
-      isCloudSyncing: true,
-      lastErrorMessage: null,
-      lastSuccessMessage: null,
-    );
-
-    try {
-      final bytes = await backupService.createEncryptedBackup(password: password);
-      await googleDriveService.uploadEncryptedBackup(bytes);
-      final nowIso = DateTime.now().toIso8601String();
-      await settingsRepository.setString('last_backup_at', nowIso);
-
-      state = state.copyWith(
-        isCloudSyncing: false,
-        lastBackupDate: nowIso,
-        lastSuccessMessage: 'Backup encrypted & uploaded to Google Drive AppData.',
-      );
-      return true;
-    } catch (e) {
-      state = state.copyWith(
-        isCloudSyncing: false,
-        lastErrorMessage: 'Google Drive backup failed: $e',
-      );
-      return false;
-    }
-  }
-
-  Future<bool> restoreFromGoogleDrive({required String password}) async {
-    state = state.copyWith(
-      isRestoring: true,
-      lastErrorMessage: null,
-      lastSuccessMessage: null,
-    );
-
-    try {
-      final bytes = await googleDriveService.downloadEncryptedBackup();
-      final summary = await backupService.restoreFromEncryptedBackup(
-        backupBytes: bytes,
-        password: password,
-      );
-
-      state = state.copyWith(
-        isRestoring: false,
-        lastSuccessMessage:
-            'Restored ${summary.tasksRestored} tasks, ${summary.focusSessionsRestored} sessions & ${summary.habitsRestored} habits from Google Drive.',
-      );
-      return true;
-    } catch (e) {
-      state = state.copyWith(
-        isRestoring: false,
-        lastErrorMessage: 'Google Drive restore failed: $e',
-      );
-      return false;
-    }
-  }
-
-  // --- Tier 3: Supabase Cloud Account Authentication & Sync ---
+  // --- Tier 2: Supabase Cloud Account Authentication & Sync ---
 
   Future<void> configureSupabase({
     required String url,
@@ -460,46 +338,6 @@ class BackupController extends StateNotifier<BackupState> {
       state = state.copyWith(
         isCloudSyncing: false,
         lastErrorMessage: '$e',
-      );
-      return false;
-    }
-  }
-
-  Future<bool> signInSupabaseWithGoogle() async {
-    state = state.copyWith(isCloudSyncing: true, lastErrorMessage: null);
-    try {
-      final account = googleDriveService.currentUser ?? await googleDriveService.signIn();
-      if (account == null) {
-        state = state.copyWith(isCloudSyncing: false);
-        return false;
-      }
-
-      final idToken = await googleDriveService.getIdToken();
-      if (idToken == null || idToken.isEmpty) {
-        throw const GoogleDriveServiceException(
-          'Google ID Token is unavailable. Please ensure Google Cloud Web Client ID is configured in Supabase.',
-        );
-      }
-      final accessToken = await googleDriveService.getAccessToken();
-
-      final res = await supabaseService.signInWithGoogle(
-        idToken: idToken,
-        accessToken: accessToken,
-      );
-
-      final userEmail = res.user?.email ?? account.email;
-      await settingsRepository.setString('cloud_account_email', userEmail);
-      state = state.copyWith(
-        isCloudSyncing: false,
-        isCloudAccountLoggedIn: true,
-        cloudAccountEmail: userEmail,
-        lastSuccessMessage: 'Welcome, $userEmail!',
-      );
-      return true;
-    } catch (e) {
-      state = state.copyWith(
-        isCloudSyncing: false,
-        lastErrorMessage: 'Google Sign-In failed: $e',
       );
       return false;
     }

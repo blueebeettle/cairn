@@ -479,7 +479,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
             ListTile(
               leading: const Icon(Icons.shield_outlined),
               title: const Text('Backup, Sync & Accounts'),
-              subtitle: const Text('Local encrypted vault, Google Drive & Cloud account'),
+              subtitle: const Text('Local encrypted vault, CSV export & Cloud account'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () {
                 Navigator.of(context).push(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../theme/app_theme.dart';
 import '../domain/backup_providers.dart';
 import '../domain/backup_service.dart';
+import '../domain/data_export_service.dart';
 
 class BackupRestoreScreen extends ConsumerStatefulWidget {
   const BackupRestoreScreen({super.key});
@@ -120,7 +121,7 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
           ),
           const SizedBox(height: 20),
 
-          // ── Recommended Option: Google Drive (Filled Card) ─────────────────
+          // ── Primary Option: Offline Encrypted Vault Backup (.cairn) ────────
           Card(
             color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
             elevation: 0,
@@ -135,11 +136,11 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.add_to_drive_outlined, color: colorScheme.primary, size: 22),
+                      Icon(Icons.shield_outlined, color: colorScheme.primary, size: 22),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Back up to Google Drive',
+                          'Encrypted Backup File (.cairn)',
                           style: textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
@@ -148,14 +149,13 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: (state.isGoogleDriveConnected ? Colors.green : colorScheme.primary)
-                              .withValues(alpha: 0.15),
+                          color: Colors.green.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          state.isGoogleDriveConnected ? 'Connected' : 'Recommended',
+                          'Recommended • Offline',
                           style: textTheme.labelSmall?.copyWith(
-                            color: state.isGoogleDriveConnected ? Colors.green : colorScheme.primary,
+                            color: Colors.green,
                             fontWeight: FontWeight.bold,
                             fontSize: 11,
                           ),
@@ -165,79 +165,42 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    state.isGoogleDriveConnected
-                        ? 'Connected as ${state.googleUserEmail}. Backups are stored in a private folder in your Google Drive. They do not show up among your files and do not count against anything you can see.'
-                        : 'Automatic, private, and restores to a new phone in one step.',
+                    'Zero-knowledge, 100% offline AES-256-GCM encrypted file. Your habits and tasks are encrypted on this device before anything touches storage. Move it to a new phone, store on a USB drive, or share to your personal cloud.',
                     style: textTheme.bodySmall?.copyWith(
                       color: tokens.textSecondary,
                       height: 1.35,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  if (!state.isGoogleDriveConnected)
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () => _showGoogleDriveDialog(context),
-                        icon: const Icon(Icons.login_rounded, size: 20),
-                        label: const Text('Connect Google Drive'),
-                      ),
-                    )
-                  else ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: state.isCloudSyncing
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: state.isExporting
                             ? null
-                            : () => _showExportDialog(context, isGoogleDrive: true),
-                        icon: state.isCloudSyncing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.cloud_upload_outlined, size: 20),
+                            : () => _showExportDialog(context),
+                        icon: const Icon(Icons.file_upload_outlined, size: 18),
                         label: Text(
-                          state.isCloudSyncing ? 'Syncing...' : 'Back up to Google Drive',
+                          state.isExporting ? 'Encrypting...' : 'Save a backup file',
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: state.isRestoring
+                      OutlinedButton.icon(
+                        onPressed: state.isImporting || state.isRestoring
                             ? null
-                            : () => _showGoogleDriveRestoreDialog(context),
-                        icon: state.isRestoring
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.cloud_download_outlined, size: 20),
-                        label: const Text('Restore from Google Drive'),
+                            : () => _pickAndRestoreFile(context),
+                        icon: const Icon(Icons.file_download_outlined, size: 18),
+                        label: const Text('Restore from backup file'),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () => ref
-                            .read(backupControllerProvider.notifier)
-                            .disconnectGoogleDrive(),
-                        icon: const Icon(Icons.logout_rounded, size: 16),
-                        label: const Text('Disconnect Account'),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 20),
 
-          // ── Secondary Alternatives: Outlined Card ─────────────────────────
+          // ── Secondary Option: Cairn Cloud Account (Supabase) ────────────────
           Card(
             elevation: 0,
             color: Colors.transparent,
@@ -250,136 +213,142 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Icon(Icons.cloud_outlined, color: tokens.textSecondary, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Cairn Cloud Account',
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: tokens.textSecondary,
+                          ),
+                        ),
+                      ),
+                      if (state.isCloudAccountLoggedIn)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Connected',
+                            style: textTheme.labelSmall?.copyWith(
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   Text(
-                    'Other ways to back up',
-                    style: textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: tokens.textSecondary,
+                    state.isCloudAccountLoggedIn
+                        ? 'Signed in as ${state.cloudAccountEmail}. Your encrypted vault can be synchronized and restored across devices without manually transferring files.'
+                        : 'Sign in with an email and password to sync your encrypted vault across devices.',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: tokens.textMuted,
+                      height: 1.35,
                     ),
                   ),
                   const SizedBox(height: 14),
+                  if (!state.isCloudAccountLoggedIn)
+                    FilledButton.tonalIcon(
+                      onPressed: () => _showCloudAccountDialog(context),
+                      icon: const Icon(Icons.login_rounded, size: 18),
+                      label: const Text('Sign In or Register'),
+                    )
+                  else ...[
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: state.isCloudSyncing
+                              ? null
+                              : () => _showCloudBackupDialog(context),
+                          icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                          label: Text(
+                            state.isCloudSyncing ? 'Syncing...' : 'Back up to my account',
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: state.isCloudSyncing
+                              ? null
+                              : () => _showCloudRestoreDialog(context),
+                          icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                          label: const Text('Restore from my account'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    TextButton.icon(
+                      onPressed: () => ref
+                          .read(backupControllerProvider.notifier)
+                          .signOutSupabase(),
+                      icon: const Icon(Icons.logout_rounded, size: 16),
+                      label: const Text('Sign Out'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
 
-                  // Alternative 1: Save a file to this phone
+          // ── Tertiary Option: Plaintext Data Export (CSV) ────────────────────
+          Card(
+            elevation: 0,
+            color: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: tokens.lineSoft),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.folder_zip_outlined, color: tokens.textSecondary, size: 20),
-                      const SizedBox(width: 10),
+                      Icon(Icons.table_chart_outlined, color: tokens.textSecondary, size: 20),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Save a file to this phone',
-                              style: textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'You keep the file and move it yourself.',
-                              style: textTheme.bodySmall?.copyWith(
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                FilledButton.tonalIcon(
-                                  onPressed: state.isExporting
-                                      ? null
-                                      : () => _showExportDialog(context),
-                                  icon: const Icon(Icons.file_upload_outlined, size: 18),
-                                  label: Text(
-                                    state.isExporting ? 'Encrypting...' : 'Save a backup file',
-                                  ),
-                                ),
-                                OutlinedButton.icon(
-                                  onPressed: state.isImporting || state.isRestoring
-                                      ? null
-                                      : () => _pickAndRestoreFile(context),
-                                  icon: const Icon(Icons.file_download_outlined, size: 18),
-                                  label: const Text('Restore from backup file'),
-                                ),
-                              ],
-                            ),
-                          ],
+                        child: Text(
+                          'Plaintext Data Export (CSV)',
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: tokens.textSecondary,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Divider(color: tokens.lineSoft),
-                  const SizedBox(height: 16),
-
-                  // Alternative 2: Use a Cairn account
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 8),
+                  Text(
+                    'Export readable spreadsheet files (.csv) of your habit logs and focus sessions for use in Excel, Google Sheets, or Obsidian.',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: tokens.textMuted,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Icon(Icons.account_circle_outlined, color: tokens.textSecondary, size: 20),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Use a Cairn account',
-                              style: textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              state.isCloudAccountLoggedIn
-                                  ? 'Signed in as ${state.cloudAccountEmail}.'
-                                  : 'Sign in with an email and password instead of Google.',
-                              style: textTheme.bodySmall?.copyWith(
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            if (!state.isCloudAccountLoggedIn)
-                              FilledButton.tonalIcon(
-                                onPressed: () => _showCloudAccountDialog(context),
-                                icon: const Icon(Icons.login_rounded, size: 18),
-                                label: const Text('Sign In or Register'),
-                              )
-                            else ...[
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  FilledButton.tonalIcon(
-                                    onPressed: state.isCloudSyncing
-                                        ? null
-                                        : () => _showCloudBackupDialog(context),
-                                    icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-                                    label: Text(
-                                      state.isCloudSyncing ? 'Syncing...' : 'Back up to my account',
-                                    ),
-                                  ),
-                                  OutlinedButton.icon(
-                                    onPressed: state.isCloudSyncing
-                                        ? null
-                                        : () => _showCloudRestoreDialog(context),
-                                    icon: const Icon(Icons.cloud_download_outlined, size: 18),
-                                    label: const Text('Restore from my account'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              TextButton.icon(
-                                onPressed: () => ref
-                                    .read(backupControllerProvider.notifier)
-                                    .signOutSupabase(),
-                                icon: const Icon(Icons.logout_rounded, size: 16),
-                                label: const Text('Sign Out'),
-                              ),
-                            ],
-                          ],
-                        ),
+                      OutlinedButton.icon(
+                        onPressed: () => _exportHabitsCsv(context),
+                        icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                        label: const Text('Export Habits (CSV)'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _exportFocusSessionsCsv(context),
+                        icon: const Icon(Icons.timer_outlined, size: 18),
+                        label: const Text('Export Focus Sessions (CSV)'),
                       ),
                     ],
                   ),
@@ -474,7 +443,7 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
 
   // ── Dialogs ────────────────────────────────────────────────────────────────
 
-  Future<void> _showExportDialog(BuildContext context, {bool isGoogleDrive = false}) async {
+  Future<void> _showExportDialog(BuildContext context) async {
     final passwordController = TextEditingController();
     final confirmController = TextEditingController();
     bool obscure = true;
@@ -486,7 +455,7 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text(isGoogleDrive ? 'Back up to Google Drive' : 'Set Backup Password'),
+              title: const Text('Set Backup Password'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -549,25 +518,19 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
 
                     Navigator.of(dialogContext).pop();
 
-                    if (isGoogleDrive) {
-                      await ref
-                          .read(backupControllerProvider.notifier)
-                          .backupToGoogleDrive(password: pass);
-                    } else {
-                      final box = context.findRenderObject() as RenderBox?;
-                      final origin = box != null
-                          ? (box.localToGlobal(Offset.zero) & box.size)
-                          : null;
+                    final box = context.findRenderObject() as RenderBox?;
+                    final origin = box != null
+                        ? (box.localToGlobal(Offset.zero) & box.size)
+                        : null;
 
-                      await ref
-                          .read(backupControllerProvider.notifier)
-                          .exportLocalBackup(
-                            password: pass,
-                            sharePositionOrigin: origin,
-                          );
-                    }
+                    await ref
+                        .read(backupControllerProvider.notifier)
+                        .exportLocalBackup(
+                          password: pass,
+                          sharePositionOrigin: origin,
+                        );
                   },
-                  child: Text(isGoogleDrive ? 'Encrypt & Upload' : 'Encrypt & Export'),
+                  child: const Text('Encrypt & Export'),
                 ),
               ],
             );
@@ -729,162 +692,6 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
     );
   }
 
-  Future<void> _showGoogleDriveDialog(BuildContext context) async {
-    final emailController = TextEditingController(text: 'user@gmail.com');
-    await showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Connect Google Drive'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Backups are stored in a private folder in your Google Drive. They do not show up among your files and do not count against anything you can see.\n\nSign in with your Google account or enter your account email:',
-                  style: TextStyle(fontSize: 13, height: 1.35),
-                ),
-                const SizedBox(height: 14),
-                FilledButton.tonalIcon(
-                  onPressed: () async {
-                    Navigator.of(dialogContext).pop();
-                    await ref
-                        .read(backupControllerProvider.notifier)
-                        .connectGoogleDrive();
-                  },
-                  icon: const Icon(Icons.account_circle_outlined, size: 20),
-                  label: const Text('Sign In with Google Account'),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: context.tokens.lineSoft)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        'OR',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: context.tokens.textMuted,
-                        ),
-                      ),
-                    ),
-                    Expanded(child: Divider(color: context.tokens.lineSoft)),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Google Account Email',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final email = emailController.text.trim();
-                Navigator.of(dialogContext).pop();
-                await ref
-                    .read(backupControllerProvider.notifier)
-                    .connectGoogleDrive(email);
-              },
-              child: const Text('Connect'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showGoogleDriveRestoreDialog(BuildContext context) async {
-    final passwordController = TextEditingController();
-    bool obscure = true;
-    String? error;
-
-    await showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Restore from Google Drive'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Enter your backup password to download and decrypt your latest Google Drive backup:',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: obscure,
-                      decoration: InputDecoration(
-                        labelText: 'Backup password',
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          tooltip: 'Toggle password visibility',
-                          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
-                          onPressed: () => setDialogState(() => obscure = !obscure),
-                        ),
-                      ),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        error!,
-                        style: TextStyle(color: context.tokens.danger, fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    final pass = passwordController.text.trim();
-                    if (pass.isEmpty) {
-                      setDialogState(() => error = 'Please enter your password.');
-                      return;
-                    }
-
-                    final confirmed = await _showConfirmReplaceDialog(
-                      context,
-                      backupDateStr: 'Google Drive',
-                    );
-                    if (confirmed && dialogContext.mounted) {
-                      Navigator.of(dialogContext).pop();
-                      await ref
-                          .read(backupControllerProvider.notifier)
-                          .restoreFromGoogleDrive(password: pass);
-                    }
-                  },
-                  child: const Text('Download & Restore'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
 
   Future<void> _showCloudAccountDialog(BuildContext context) async {
     final emailController = TextEditingController();
@@ -950,53 +757,6 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(child: Divider(color: context.tokens.lineSoft)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Text(
-                            'OR',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: context.tokens.textMuted,
-                            ),
-                          ),
-                        ),
-                        Expanded(child: Divider(color: context.tokens.lineSoft)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: isLoading
-                            ? null
-                            : () async {
-                                setDialogState(() {
-                                  isLoading = true;
-                                  error = null;
-                                });
-                                final success = await ref
-                                    .read(backupControllerProvider.notifier)
-                                    .signInSupabaseWithGoogle();
-                                if (success && dialogContext.mounted) {
-                                  Navigator.of(dialogContext).pop();
-                                } else {
-                                  setDialogState(() {
-                                    isLoading = false;
-                                    error = ref
-                                            .read(backupControllerProvider)
-                                            .lastErrorMessage ??
-                                        'Google Sign-In failed.';
-                                  });
-                                }
-                              },
-                        icon: const Icon(Icons.account_circle_outlined, size: 20),
-                        label: const Text('Continue with Google'),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -1237,6 +997,48 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
       return '${dt.day} $month ${dt.year}';
     } catch (_) {
       return isoString;
+    }
+  }
+
+  Future<void> _exportHabitsCsv(BuildContext context) async {
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null ? (box.localToGlobal(Offset.zero) & box.size) : null;
+    try {
+      final exportService = ref.read(dataExportServiceProvider);
+      final csv = await exportService.generateHabitsCsv();
+      final dateStr = DateTime.now().toIso8601String().substring(0, 10);
+      await exportService.shareCsv(
+        csvContent: csv,
+        fileName: 'cairn-habits-$dateStr.csv',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export habits: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportFocusSessionsCsv(BuildContext context) async {
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null ? (box.localToGlobal(Offset.zero) & box.size) : null;
+    try {
+      final exportService = ref.read(dataExportServiceProvider);
+      final csv = await exportService.generateFocusSessionsCsv();
+      final dateStr = DateTime.now().toIso8601String().substring(0, 10);
+      await exportService.shareCsv(
+        csvContent: csv,
+        fileName: 'cairn-sessions-$dateStr.csv',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export sessions: $e')),
+        );
+      }
     }
   }
 }

@@ -16,31 +16,21 @@ holding other people's data anyway.
 
 ---
 
-## 1. Google Sign-In will break on release day unless you act first
+## 1. Google Sign-In Removed (No OAuth / SHA-1 Configuration Required)
 
-**This is the one that will actually bite you.**
+> [!NOTE]
+> As of September 2026, Google Sign-In and Google Drive integration have been
+> completely removed from Cairn.
 
-`google_drive_service.dart` hardcodes two OAuth client IDs. On Android an OAuth
-client is bound to your app's **signing certificate SHA-1 fingerprint**. Right
-now everything is signed with the debug key, so the registered fingerprint is
-the debug one.
+This eliminated the fragility of registering OAuth client IDs and debug/release
+SHA-1 certificate fingerprints in Google Cloud Console.
 
-The moment you sign with the release keystore (RELEASE.md round 5), the
-fingerprint changes and **Google Sign-In stops working** — usually with a bare
-`ApiException: 10`, which tells you nothing.
-
-Before you build the release APK:
-
-1. Create the release keystore.
-2. Get its SHA-1:
-   `keytool -list -v -keystore <your.jks> -alias <alias>`
-3. Google Cloud Console → Credentials → your Android OAuth client → add the
-   release SHA-1. Keep the debug one so debug builds keep working.
-4. If you later use Play App Signing, add the SHA-1 Play shows you as well —
-   Play re-signs your upload, so that is a third fingerprint.
-
-Test Google Sign-In **on the release build**, on a device that has never had the
-debug build installed. A debug build passing proves nothing about this.
+Instead, Cairn uses:
+1. **Local Encrypted Vault Files (.cairn)**: Zero setup, AES-256-GCM encrypted,
+   and 100% offline. Users can share or save to Google Drive or any cloud using
+   the system share sheet.
+2. **Cairn Cloud Account (Supabase)**: Straightforward email and password
+   authentication for remote encrypted backup without third-party OAuth.
 
 ## 2. Check Row Level Security on the Supabase project — today
 

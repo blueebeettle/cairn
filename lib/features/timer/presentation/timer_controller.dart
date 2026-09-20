@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -582,6 +583,7 @@ class TimerController extends StateNotifier<TimerState> {
         state.status != TimerStatus.paused) {
       return;
     }
+    unawaited(HapticFeedback.mediumImpact().catchError((_) {}));
 
     final now = _clock();
     final int actualDurationS;
