@@ -7,6 +7,9 @@ import 'package:habit_tracker/data/database/app_database.dart';
 import 'package:habit_tracker/data/dev/seed_data.dart';
 import 'package:habit_tracker/data/providers/analytics_providers.dart';
 import 'package:habit_tracker/data/repositories/analytics_repository.dart';
+import 'package:habit_tracker/data/repositories/events_repository.dart';
+import 'package:habit_tracker/data/repositories/habits_repository.dart';
+import 'package:habit_tracker/data/repositories/habit_analytics_repository.dart';
 import 'package:habit_tracker/data/repositories/settings_repository.dart';
 
 void main() {
@@ -14,10 +17,23 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     const timeService = TimeService(dayStartOffsetMinutes: 240);
     final settingsRepo = SettingsRepository(db: db);
+    final eventsRepo = EventsRepository(db: db, timeService: timeService);
     final analyticsRepo = AnalyticsRepository(
       db: db,
       timeService: timeService,
       settings: settingsRepo,
+    );
+    final habitsRepo = HabitsRepository(
+      db: db,
+      eventsRepository: eventsRepo,
+      timeService: timeService,
+      deviceId: 'bench-device-1',
+    );
+    final habitAnalyticsRepo = HabitAnalyticsRepository(
+      db: db,
+      timeService: timeService,
+      settings: settingsRepo,
+      habitsRepository: habitsRepo,
     );
     final seeder = SeedData(
       db: db,
@@ -51,7 +67,14 @@ void main() {
     final sessionCount = (await db.select(db.focusSessions).get()).length;
     final taskCount = (await db.select(db.tasks).get()).length;
     final projectCount = (await db.select(db.projects).get()).length;
-    print('   Actual DB counts: $eventCount events, $sessionCount focus_sessions, $taskCount tasks, $projectCount projects');
+    final habitCount = (await db.select(db.habits).get()).length;
+    final habitEntryCount = (await db.select(db.habitEntries).get()).length;
+    print('   Actual DB counts: $eventCount events, $sessionCount focus_sessions, $taskCount tasks, $projectCount projects, $habitCount habits, $habitEntryCount habit_entries');
+
+    expect(report.habits, equals(6));
+    expect(report.habitEntries, greaterThan(2000));
+    expect(habitCount, equals(6));
+    expect(habitEntryCount, greaterThan(2000));
 
     // 2. Measure Stats queries for each range
     final today = timeService.todayLocalDate();
@@ -77,15 +100,33 @@ void main() {
     final heatmapSw = Stopwatch()..start();
     final heatmapCells = await analyticsRepo.heatmap(todayLocalDate: today);
     heatmapSw.stop();
-    print('\n3. Heatmap 365-day query: ${heatmapSw.elapsedMicroseconds / 1000.0}ms (${heatmapCells.length} cells)');
+    print('\n3. Focus Heatmap 365-day query: ${heatmapSw.elapsedMicroseconds / 1000.0}ms (${heatmapCells.length} cells)');
 
     final thresholdsSw = Stopwatch()..start();
     final thresholds = await analyticsRepo.heatmapThresholds(todayLocalDate: today);
     thresholdsSw.stop();
-    print('   Heatmap thresholds calculation: ${thresholdsSw.elapsedMicroseconds / 1000.0}ms (provisional: ${thresholds.provisional}, days: ${thresholds.nonZeroDayCount})');
+    print('   Focus Heatmap thresholds calculation: ${thresholdsSw.elapsedMicroseconds / 1000.0}ms (provisional: ${thresholds.provisional}, days: ${thresholds.nonZeroDayCount})');
 
-    // 4. Wipe duration
-    print('\n4. Database wipe...');
+    // 4. Habit Stats & Heatmap queries
+    print('\n4. Habit Stats & Heatmap Query Durations:');
+    final habitStatsSw = Stopwatch()..start();
+    final habitBundle = await habitAnalyticsRepo.load(StatsPeriod.lastNDays(today, 30));
+    habitStatsSw.stop();
+    print('   • Habit stats 30-day query: ${habitStatsSw.elapsedMicroseconds / 1000.0}ms '
+        '(activeHabits: ${habitBundle.activeHabitCount}, totalCheckOffs: ${habitBundle.totalCheckOffs}, completionRate: ${(habitBundle.completionRate.rate != null ? (habitBundle.completionRate.rate! * 100).toStringAsFixed(1) : 0)}%)');
+
+    final habitHeatmapSw = Stopwatch()..start();
+    final habitHeatmapCells = await habitAnalyticsRepo.heatmap(todayLocalDate: today);
+    habitHeatmapSw.stop();
+    print('   • Habit Heatmap 365-day query: ${habitHeatmapSw.elapsedMicroseconds / 1000.0}ms (${habitHeatmapCells.length} cells)');
+
+    final habitThresholdsSw = Stopwatch()..start();
+    final habitThresholds = await habitAnalyticsRepo.heatmapThresholds(todayLocalDate: today);
+    habitThresholdsSw.stop();
+    print('   • Habit Heatmap thresholds calculation: ${habitThresholdsSw.elapsedMicroseconds / 1000.0}ms (provisional: ${habitThresholds.provisional}, days: ${habitThresholds.nonZeroDayCount})');
+
+    // 5. Wipe duration
+    print('\n5. Database wipe...');
     final wipeSw = Stopwatch()..start();
     await seeder.wipe();
     wipeSw.stop();
@@ -95,7 +136,15 @@ void main() {
     final eventsAfter = (await db.select(db.events).get()).length;
     final sessionsAfter = (await db.select(db.focusSessions).get()).length;
     final tasksAfter = (await db.select(db.tasks).get()).length;
-    print('   Counts after wipe: $eventsAfter events, $sessionsAfter sessions, $tasksAfter tasks');
+    final habitsAfter = (await db.select(db.habits).get()).length;
+    final habitEntriesAfter = (await db.select(db.habitEntries).get()).length;
+    print('   Counts after wipe: $eventsAfter events, $sessionsAfter sessions, $tasksAfter tasks, $habitsAfter habits, $habitEntriesAfter habit_entries');
+
+    expect(eventsAfter, equals(0));
+    expect(sessionsAfter, equals(0));
+    expect(tasksAfter, equals(0));
+    expect(habitsAfter, equals(0));
+    expect(habitEntriesAfter, equals(0));
 
     print('======================================================================\n');
 

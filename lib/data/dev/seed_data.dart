@@ -4,7 +4,9 @@ import 'dart:math';
 import 'package:drift/drift.dart';
 
 import '../../core/constants/event_types.dart';
+import '../../core/habits/habit_schedule.dart';
 import '../../core/ids.dart';
+import '../../core/recurrence/recurrence.dart';
 import '../../core/time/time_service.dart';
 import '../database/app_database.dart';
 
@@ -111,7 +113,7 @@ class SeedData {
         batch.insertAll(_db.focusSessions, sessions);
       });
       eventCount += events.length;
-      onProgress?.call((dayOffset / days) * 0.8);
+      onProgress?.call((dayOffset / days) * 0.6);
     }
 
     final taskEvents = await _insertTasks(
@@ -119,9 +121,17 @@ class SeedData {
       startDate: startDate,
       days: days,
       projectIds: projectIds,
-      onProgress: (f) => onProgress?.call(0.8 + f * 0.2),
+      onProgress: (f) => onProgress?.call(0.6 + f * 0.25),
     );
     eventCount += taskEvents;
+
+    final habitResult = await _insertHabits(
+      startDate: startDate,
+      today: today,
+      days: days,
+      onProgress: (f) => onProgress?.call(0.85 + f * 0.15),
+    );
+    eventCount += habitResult.events;
 
     onProgress?.call(1.0);
     stopwatch.stop();
@@ -132,6 +142,8 @@ class SeedData {
       sessions: sessionCount,
       tasks: taskCount,
       projects: projectIds.length,
+      habits: habitResult.habits,
+      habitEntries: habitResult.entries,
       elapsedMs: stopwatch.elapsedMilliseconds,
     );
   }
@@ -554,6 +566,368 @@ class SeedData {
     return eventCount;
   }
 
+  static const _habitSpecs = [
+    _HabitSpec(
+      title: 'Read 20 pages',
+      scheduleRule: 'FREQ=DAILY',
+      iconName: 'book',
+      colorIndex: 0,
+      targetCount: 1,
+      notes: 'Daily non-fiction or literature reading',
+      completionRate: 0.84,
+      skipRate: 0.04,
+      preferredHour: 21,
+    ),
+    _HabitSpec(
+      title: 'Drink water',
+      scheduleRule: 'FREQ=DAILY',
+      iconName: 'water',
+      colorIndex: 1,
+      targetCount: 8,
+      unitLabel: 'glasses',
+      notes: 'Stay hydrated through the workday',
+      completionRate: 0.88,
+      skipRate: 0.03,
+      preferredHour: 18,
+    ),
+    _HabitSpec(
+      title: 'Morning workout',
+      scheduleRule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR',
+      iconName: 'fitness',
+      colorIndex: 2,
+      targetCount: 1,
+      notes: 'Gym or calisthenics routine',
+      completionRate: 0.82,
+      skipRate: 0.06,
+      preferredHour: 7,
+    ),
+    _HabitSpec(
+      title: 'Meditation',
+      scheduleRule: 'FREQ=DAILY',
+      iconName: 'meditate',
+      colorIndex: 3,
+      targetCount: 1,
+      notes: '10 minutes mindfulness and breathwork',
+      completionRate: 0.80,
+      skipRate: 0.05,
+      preferredHour: 8,
+    ),
+    _HabitSpec(
+      title: 'Evening stretch',
+      scheduleRule: 'FREQ=WEEKLY;BYDAY=TU,TH,SA',
+      iconName: 'walk',
+      colorIndex: 4,
+      targetCount: 1,
+      notes: 'Mobility and posture work',
+      completionRate: 0.85,
+      skipRate: 0.04,
+      preferredHour: 20,
+    ),
+    _HabitSpec(
+      title: 'Cold shower',
+      scheduleRule: 'FREQ=DAILY',
+      iconName: 'check',
+      colorIndex: 5,
+      targetCount: 1,
+      isArchived: true,
+      notes: 'Summer challenge',
+      completionRate: 0.72,
+      skipRate: 0.08,
+      preferredHour: 7,
+    ),
+  ];
+
+  static const _habitNotes = [
+    'Felt great today and stayed focused.',
+    'Quick session between meetings.',
+    'Morning routine went smoothly.',
+    'Tough start but glad I got it done.',
+    'Solid session, felt strong.',
+    'Read an extra chapter today.',
+  ];
+
+  Future<_HabitSeedResult> _insertHabits({
+    required String startDate,
+    required String today,
+    required int days,
+    void Function(double fraction)? onProgress,
+  }) async {
+    var habitCount = 0;
+    var entryCount = 0;
+    var eventCount = 0;
+
+    final habitRows = <HabitsCompanion>[];
+    final entryRows = <HabitEntriesCompanion>[];
+    final eventRows = <EventsCompanion>[];
+
+    final createdInstant = _instantFor(
+      TimeService.parseLocalDate(startDate),
+      8,
+      0,
+    );
+    final tzOffsetMin = _time.currentTzOffsetMin(createdInstant);
+    final tzId = _time.currentTzId();
+
+    for (var i = 0; i < _habitSpecs.length; i++) {
+      final spec = _habitSpecs[i];
+      final habitId = newId();
+      habitCount++;
+
+      // If archived, archive roughly 85% into the seeded span so there is
+      // plenty of active history before it was archived.
+      final String? archivedLocalDate;
+      final int? archivedAt;
+      if (spec.isArchived) {
+        final archivedOffset = (days * 0.85).round();
+        archivedLocalDate = TimeService.addDays(startDate, archivedOffset);
+        archivedAt = _instantFor(
+          TimeService.parseLocalDate(archivedLocalDate),
+          18,
+          0,
+        );
+      } else {
+        archivedLocalDate = null;
+        archivedAt = null;
+      }
+
+      habitRows.add(HabitsCompanion.insert(
+        id: habitId,
+        title: spec.title,
+        notes: Value(spec.notes),
+        colorIndex: Value(spec.colorIndex),
+        iconName: Value(spec.iconName),
+        scheduleRule: spec.scheduleRule,
+        anchorDate: startDate,
+        targetCount: Value(spec.targetCount),
+        unitLabel: Value(spec.unitLabel),
+        skipAllowancePerMonth: Value(spec.skipAllowancePerMonth),
+        status: Value(
+          spec.isArchived ? HabitStatuses.archived : HabitStatuses.active,
+        ),
+        sortOrder: Value(i.toDouble()),
+        createdAt: createdInstant,
+        createdLocalDate: startDate,
+        archivedAt: Value(archivedAt),
+        updatedAt: archivedAt ?? createdInstant,
+        deviceId: _deviceId,
+      ));
+
+      eventRows.add(_event(
+        type: EventTypes.habitCreated,
+        occurredAt: createdInstant,
+        localDate: startDate,
+        tzId: tzId,
+        tzOffsetMin: tzOffsetMin,
+        subjectType: SubjectTypes.habit,
+        subjectId: habitId,
+        payload: {
+          'title': spec.title,
+          'schedule_rule': spec.scheduleRule,
+          'anchor_date': startDate,
+          if (spec.notes != null) 'notes': spec.notes,
+          'color_index': spec.colorIndex,
+          'icon_name': spec.iconName,
+          'target_count': spec.targetCount,
+          if (spec.unitLabel != null) 'unit_label': spec.unitLabel,
+          'skip_allowance_per_month': spec.skipAllowancePerMonth,
+          'sort_order': i.toDouble(),
+        },
+      ));
+
+      if (spec.isArchived && archivedAt != null && archivedLocalDate != null) {
+        eventRows.add(_event(
+          type: EventTypes.habitArchived,
+          occurredAt: archivedAt,
+          localDate: archivedLocalDate,
+          tzId: tzId,
+          tzOffsetMin: _time.currentTzOffsetMin(archivedAt),
+          subjectType: SubjectTypes.habit,
+          subjectId: habitId,
+          payload: const {},
+        ));
+      }
+
+      final rule = RecurrenceRule.parse(spec.scheduleRule);
+      final lastDate = spec.isArchived ? archivedLocalDate! : today;
+      final scheduledDates = HabitSchedule.scheduledBetween(
+        rule: rule,
+        anchorDate: startDate,
+        start: startDate,
+        end: lastDate,
+      );
+
+      final skipsThisMonth = <String, int>{};
+
+      for (final date in scheduledDates) {
+        final month = date.substring(0, 7);
+        final isToday = date == today;
+        final daysFromToday = TimeService.daysBetween(date, today);
+
+        var isCompleted = false;
+        var isSkipped = false;
+        var checkCount = 0;
+
+        if (isToday) {
+          // Today: 60% chance done, 40% pending so user sees pending habits on Today screen
+          if (_rng.nextDouble() < 0.6) {
+            isCompleted = true;
+            checkCount = spec.targetCount;
+          }
+        } else if (daysFromToday <= 14) {
+          // Recent 2 weeks: 95% completion to ensure active habits have high current streaks
+          final r = _rng.nextDouble();
+          if (r < 0.95) {
+            isCompleted = true;
+            checkCount = spec.targetCount;
+          } else {
+            isSkipped = true;
+            checkCount = 0;
+          }
+        } else {
+          final r = _rng.nextDouble();
+          if (r < spec.completionRate) {
+            isCompleted = true;
+            checkCount = spec.targetCount;
+          } else if (r < spec.completionRate + spec.skipRate) {
+            isSkipped = true;
+            checkCount = 0;
+          } else {
+            // Missed! For count habits (water), 15% partial count
+            if (spec.targetCount > 1 && _rng.nextDouble() < 0.15) {
+              checkCount = 1 + _rng.nextInt(spec.targetCount - 1);
+            } else {
+              // Absence is miss (SPEC §10.1): no row written
+              continue;
+            }
+          }
+        }
+
+        final parsedDate = TimeService.parseLocalDate(date);
+        final minute = _rng.nextInt(60);
+        final checkInstant = _instantFor(
+          parsedDate,
+          spec.preferredHour,
+          minute,
+        );
+        final entryTzOffset = _time.currentTzOffsetMin(checkInstant);
+        final entryTzId = _time.currentTzId();
+
+        final note = (isCompleted && _rng.nextDouble() < 0.03)
+            ? _habitNotes[_rng.nextInt(_habitNotes.length)]
+            : null;
+
+        final entryId = newId();
+        entryRows.add(HabitEntriesCompanion.insert(
+          id: entryId,
+          habitId: habitId,
+          localDate: date,
+          checkCount: Value(checkCount),
+          skipped: Value(isSkipped),
+          note: Value(note),
+          lastCheckedAt: Value(checkCount > 0 ? checkInstant : null),
+          tzOffsetMin: entryTzOffset,
+          createdAt: checkInstant,
+          updatedAt: checkInstant,
+          deviceId: _deviceId,
+        ));
+        entryCount++;
+
+        if (isSkipped) {
+          eventRows.add(_event(
+            type: EventTypes.habitSkipped,
+            occurredAt: checkInstant,
+            localDate: date,
+            tzId: entryTzId,
+            tzOffsetMin: entryTzOffset,
+            subjectType: SubjectTypes.habit,
+            subjectId: habitId,
+            payload: {'skipped': true},
+          ));
+
+          final used = skipsThisMonth[month] ?? 0;
+          if (used < spec.skipAllowancePerMonth) {
+            skipsThisMonth[month] = used + 1;
+            eventRows.add(_event(
+              type: EventTypes.habitFreezeUsed,
+              occurredAt: checkInstant,
+              localDate: date,
+              tzId: entryTzId,
+              tzOffsetMin: entryTzOffset,
+              subjectType: SubjectTypes.habit,
+              subjectId: habitId,
+              payload: {'month': month},
+            ));
+          }
+        } else if (checkCount > 0) {
+          eventRows.add(_event(
+            type: EventTypes.habitChecked,
+            occurredAt: checkInstant,
+            localDate: date,
+            tzId: entryTzId,
+            tzOffsetMin: entryTzOffset,
+            subjectType: SubjectTypes.habit,
+            subjectId: habitId,
+            payload: {'count_after': checkCount},
+          ));
+        }
+
+        if (note != null) {
+          eventRows.add(_event(
+            type: EventTypes.habitNoteSet,
+            occurredAt: checkInstant,
+            localDate: date,
+            tzId: entryTzId,
+            tzOffsetMin: entryTzOffset,
+            subjectType: SubjectTypes.habit,
+            subjectId: habitId,
+            payload: {'note': note},
+          ));
+        }
+
+        // Batch flush if rows are accumulating
+        if (eventRows.length >= 500) {
+          await _db.batch((batch) {
+            if (habitRows.isNotEmpty) {
+              batch.insertAll(_db.habits, habitRows);
+              habitRows.clear();
+            }
+            if (entryRows.isNotEmpty) {
+              batch.insertAll(_db.habitEntries, entryRows);
+              entryRows.clear();
+            }
+            batch.insertAll(_db.events, eventRows);
+            eventCount += eventRows.length;
+            eventRows.clear();
+          });
+        }
+      }
+
+      onProgress?.call((i + 1) / _habitSpecs.length);
+    }
+
+    // Final flush of remaining rows
+    if (habitRows.isNotEmpty || entryRows.isNotEmpty || eventRows.isNotEmpty) {
+      await _db.batch((batch) {
+        if (habitRows.isNotEmpty) {
+          batch.insertAll(_db.habits, habitRows);
+        }
+        if (entryRows.isNotEmpty) {
+          batch.insertAll(_db.habitEntries, entryRows);
+        }
+        if (eventRows.isNotEmpty) {
+          batch.insertAll(_db.events, eventRows);
+          eventCount += eventRows.length;
+        }
+      });
+    }
+
+    return _HabitSeedResult(
+      habits: habitCount,
+      entries: entryCount,
+      events: eventCount,
+    );
+  }
+
   /// The UTC instant at which the local clock reads these fields on [date].
   ///
   /// Built by converting a naive local wall clock through the device's own
@@ -614,6 +988,10 @@ class SeedData {
     await _db.transaction(() async {
       await _db.delete(_db.events).go();
       await _db.delete(_db.focusSessions).go();
+      await _db.delete(_db.habitEntries).go();
+      await _db.delete(_db.habitReminderTimes).go();
+      await _db.delete(_db.habits).go();
+      await _db.delete(_db.taskReminderOffsets).go();
       await _db.delete(_db.taskTags).go();
       await _db.delete(_db.tasks).go();
       await _db.delete(_db.tags).go();
@@ -632,6 +1010,8 @@ class SeedReport {
     required this.tasks,
     required this.projects,
     required this.elapsedMs,
+    this.habits = 0,
+    this.habitEntries = 0,
   });
 
   final int days;
@@ -639,9 +1019,53 @@ class SeedReport {
   final int sessions;
   final int tasks;
   final int projects;
+  final int habits;
+  final int habitEntries;
   final int elapsedMs;
 
   @override
   String toString() => '$events events, $sessions sessions, $tasks tasks, '
-      '$projects projects across $days days in ${elapsedMs}ms';
+      '$projects projects, $habits habits ($habitEntries entries) across $days days in ${elapsedMs}ms';
+}
+
+class _HabitSpec {
+  const _HabitSpec({
+    required this.title,
+    required this.scheduleRule,
+    required this.iconName,
+    required this.colorIndex,
+    this.targetCount = 1,
+    this.unitLabel,
+    this.skipAllowancePerMonth = 2,
+    this.notes,
+    this.isArchived = false,
+    this.completionRate = 0.85,
+    this.skipRate = 0.05,
+    this.preferredHour = 8,
+  });
+
+  final String title;
+  final String scheduleRule;
+  final String iconName;
+  final int colorIndex;
+  final int targetCount;
+  final String? unitLabel;
+  final int skipAllowancePerMonth;
+  final String? notes;
+  final bool isArchived;
+  final double completionRate;
+  final double skipRate;
+  final int preferredHour;
+}
+
+class _HabitSeedResult {
+  const _HabitSeedResult({
+    required this.habits,
+    required this.entries,
+    required this.events,
+  });
+
+  final int habits;
+  final int entries;
+  final int events;
 }
