@@ -47,7 +47,7 @@
     </LinearLayout>
 
     <!-- Divider 1 -->
-    <View
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="32dp"
         android:background="@color/widget_border" />
@@ -88,7 +88,7 @@
     </LinearLayout>
 
     <!-- Divider 2 -->
-    <View
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="32dp"
         android:background="@color/widget_border" />

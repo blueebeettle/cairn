@@ -1,13 +1,18 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:home_widget/home_widget.dart';
 
 import '../../core/constants/event_types.dart';
+import '../../core/time/time_service.dart';
+import '../../data/database/app_database.dart';
 import '../../data/providers/database_provider.dart';
 import '../../data/providers/habit_providers.dart';
+import '../../data/repositories/events_repository.dart';
 import '../../data/repositories/habits_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 
 class HomeScreenWidgetService {
   HomeScreenWidgetService({
@@ -105,6 +110,10 @@ class HomeScreenWidgetService {
           final streakStr = streak > 0 ? '🔥 $streak' : '';
 
           await HomeWidget.saveWidgetData<String>(
+            'habit_${i + 1}_id',
+            h.habit.id,
+          );
+          await HomeWidget.saveWidgetData<String>(
             'habit_${i + 1}_title',
             h.habit.title,
           );
@@ -117,6 +126,10 @@ class HomeScreenWidgetService {
             streakStr,
           );
         } else {
+          await HomeWidget.saveWidgetData<String?>(
+            'habit_${i + 1}_id',
+            null,
+          );
           await HomeWidget.saveWidgetData<String?>(
             'habit_${i + 1}_title',
             null,
@@ -203,3 +216,68 @@ class HomeScreenWidgetService {
 final homeScreenWidgetServiceProvider = Provider<HomeScreenWidgetService>((ref) {
   return HomeScreenWidgetService();
 });
+
+/// Top-level callback invoked by Android/iOS background receiver when a home widget
+/// action is triggered (e.g. checking/unchecking a habit).
+@pragma('vm:entry-point')
+Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
+  if (uri == null) return;
+  if (uri.scheme == 'cairn' && uri.host == 'toggle_habit') {
+    final habitId = uri.queryParameters['id'];
+    if (habitId == null || habitId.isEmpty) return;
+
+    WidgetsFlutterBinding.ensureInitialized();
+    final db = AppDatabase();
+    try {
+      final settingsRepo = SettingsRepository(db: db);
+      final deviceId = await settingsRepo.getOrCreateDeviceId();
+      final timeService = TimeService(
+        dayStartOffsetMinutes:
+            await settingsRepo.getInt('day_start_offset') ?? 240,
+      );
+      final eventsRepo = EventsRepository(
+        db: db,
+        timeService: timeService,
+        deviceId: deviceId,
+      );
+      final habitsRepo = HabitsRepository(
+        db: db,
+        eventsRepository: eventsRepo,
+        timeService: timeService,
+        deviceId: deviceId,
+      );
+
+      final today = timeService.todayLocalDate();
+      final snapshot = await habitsRepo.loadSnapshot(habitId);
+      if (snapshot != null) {
+        if (snapshot.isDoneToday) {
+          await habitsRepo.uncheck(habitId, localDate: today);
+        } else {
+          await habitsRepo.check(habitId, localDate: today);
+        }
+
+        final updatedSnapshots = await habitsRepo.loadActiveSnapshots();
+        final widgetService = HomeScreenWidgetService();
+        await widgetService.updateHabitsWidget(
+          habits: updatedSnapshots,
+          todayLocalDate: today,
+        );
+
+        final scheduled = updatedSnapshots.where((h) => h.isScheduledToday).toList();
+        final done = scheduled.where((h) => h.isDoneToday).length;
+        await HomeWidget.saveWidgetData<String>(
+          'today_habits_summary',
+          '$done / ${scheduled.length}',
+        );
+        await HomeWidget.updateWidget(
+          name: HomeScreenWidgetService.todayWidgetName,
+          androidName: HomeScreenWidgetService.todayWidgetName,
+        );
+      }
+    } catch (e, st) {
+      debugPrint('HomeScreenWidgetService: background callback error: $e\n$st');
+    } finally {
+      await db.close();
+    }
+  }
+}

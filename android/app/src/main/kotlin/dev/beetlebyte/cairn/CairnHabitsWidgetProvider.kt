@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.Uri
 import android.view.View
 import android.widget.RemoteViews
+import es.antonborri.home_widget.HomeWidgetBackgroundIntent
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 
@@ -35,6 +36,7 @@ class CairnHabitsWidgetProvider : AppWidgetProvider() {
                 var visibleRows = 0
                 for (i in 0 until 4) {
                     val habitTitle = widgetData.getString("habit_${i + 1}_title", null)
+                    val habitId = widgetData.getString("habit_${i + 1}_id", null)
                     if (habitTitle != null) {
                         val isDone = widgetData.getBoolean("habit_${i + 1}_done", false)
                         val streak = widgetData.getString("habit_${i + 1}_streak", "") ?: ""
@@ -50,6 +52,22 @@ class CairnHabitsWidgetProvider : AppWidgetProvider() {
                             setTextViewText(checkIds[i], "○")
                             setTextColor(checkIds[i], context.getColor(R.color.widget_text_muted))
                         }
+
+                        if (habitId != null) {
+                            val toggleIntent = HomeWidgetBackgroundIntent.getBroadcast(
+                                context,
+                                Uri.parse("cairn://toggle_habit?id=$habitId")
+                            )
+                            setOnClickPendingIntent(checkIds[i], toggleIntent)
+
+                            val openHabitIntent = HomeWidgetLaunchIntent.getActivity(
+                                context,
+                                MainActivity::class.java,
+                                Uri.parse("cairn://widget/habits?id=$habitId")
+                            )
+                            setOnClickPendingIntent(titleIds[i], openHabitIntent)
+                        }
+
                         visibleRows++
                     } else {
                         setViewVisibility(rowIds[i], View.GONE)

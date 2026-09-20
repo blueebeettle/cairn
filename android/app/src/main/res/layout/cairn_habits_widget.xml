@@ -69,20 +69,20 @@
         android:background="@drawable/cairn_widget_item_bg"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="5dp"
+        android:paddingStart="6dp"
+        android:paddingTop="3dp"
         android:paddingEnd="8dp"
-        android:paddingBottom="5dp"
+        android:paddingBottom="3dp"
         android:visibility="gone">
 
         <TextView
             android:id="@+id/habit_1_check"
-            android:layout_width="20dp"
-            android:layout_height="wrap_content"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:gravity="center"
             android:text="○"
             android:textColor="@color/widget_text_muted"
-            android:textSize="13sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -114,20 +114,20 @@
         android:background="@drawable/cairn_widget_item_bg"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="5dp"
+        android:paddingStart="6dp"
+        android:paddingTop="3dp"
         android:paddingEnd="8dp"
-        android:paddingBottom="5dp"
+        android:paddingBottom="3dp"
         android:visibility="gone">
 
         <TextView
             android:id="@+id/habit_2_check"
-            android:layout_width="20dp"
-            android:layout_height="wrap_content"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:gravity="center"
             android:text="○"
             android:textColor="@color/widget_text_muted"
-            android:textSize="13sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -159,20 +159,20 @@
         android:background="@drawable/cairn_widget_item_bg"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="5dp"
+        android:paddingStart="6dp"
+        android:paddingTop="3dp"
         android:paddingEnd="8dp"
-        android:paddingBottom="5dp"
+        android:paddingBottom="3dp"
         android:visibility="gone">
 
         <TextView
             android:id="@+id/habit_3_check"
-            android:layout_width="20dp"
-            android:layout_height="wrap_content"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:gravity="center"
             android:text="○"
             android:textColor="@color/widget_text_muted"
-            android:textSize="13sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -204,20 +204,20 @@
         android:background="@drawable/cairn_widget_item_bg"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="5dp"
+        android:paddingStart="6dp"
+        android:paddingTop="3dp"
         android:paddingEnd="8dp"
-        android:paddingBottom="5dp"
+        android:paddingBottom="3dp"
         android:visibility="gone">
 
         <TextView
             android:id="@+id/habit_4_check"
-            android:layout_width="20dp"
-            android:layout_height="wrap_content"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:gravity="center"
             android:text="○"
             android:textColor="@color/widget_text_muted"
-            android:textSize="13sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView

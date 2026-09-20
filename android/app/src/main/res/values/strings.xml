@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="habits_widget_name">Today\'s Habits</string>
+    <string name="habits_widget_description">Interactive daily habit tracker with one-tap check-offs</string>
+    <string name="today_widget_name">Today Summary</string>
+    <string name="today_widget_description">Glanceable summary of focus time, habits, and tasks</string>
+</resources>

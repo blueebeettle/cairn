@@ -1,8 +1,10 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
@@ -12,9 +14,13 @@ import 'data/providers/database_provider.dart';
 import 'data/repositories/settings_repository.dart';
 import 'features/backup/domain/supabase_backup_service.dart';
 import 'features/reminders/reminder_service.dart';
+import 'features/widgets/home_screen_widget_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    await HomeWidget.registerInteractivityCallback(homeWidgetBackgroundCallback);
+  }
   final db = AppDatabase();
   final settingsRepo = SettingsRepository(db: db);
   final deviceId = await settingsRepo.getOrCreateDeviceId();
