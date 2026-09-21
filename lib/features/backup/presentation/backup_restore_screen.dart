@@ -285,12 +285,31 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    TextButton.icon(
-                      onPressed: () => ref
-                          .read(backupControllerProvider.notifier)
-                          .signOutSupabase(),
-                      icon: const Icon(Icons.logout_rounded, size: 16),
-                      label: const Text('Sign Out'),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => ref
+                              .read(backupControllerProvider.notifier)
+                              .signOutSupabase(),
+                          icon: const Icon(Icons.logout_rounded, size: 16),
+                          label: const Text('Sign Out'),
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: state.isCloudSyncing
+                              ? null
+                              : () => _confirmDeleteCloudData(context),
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            size: 16,
+                            color: context.tokens.danger,
+                          ),
+                          label: Text(
+                            'Delete Cloud Data',
+                            style: TextStyle(color: context.tokens.danger),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ],
@@ -967,6 +986,39 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
         );
       },
     );
+  }
+
+  Future<void> _confirmDeleteCloudData(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Cloud Data?'),
+          content: const Text(
+            'This will permanently delete your encrypted vault backup stored in Cairn Cloud. '
+            'This action cannot be undone.\n\n'
+            'Your local data on this device will not be affected.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: context.tokens.danger,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete Data'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && context.mounted) {
+      await ref.read(backupControllerProvider.notifier).deleteCloudData();
+    }
   }
 
   String _formatDate(String isoString) {

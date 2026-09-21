@@ -76,14 +76,16 @@ class HabitCheckController extends StateNotifier<Map<String, int>> {
     final habit = snapshot.habit;
     final id = habit.id;
     final current = countFor(snapshot);
-    final undo = current >= _target(habit);
-    state = {...state, id: undo ? current - 1 : current + 1};
+    final target = _target(habit);
+    final isDone = current >= target;
+    // Below target: increment by 1. Once target is reached: reset back to 0.
+    state = {...state, id: isDone ? 0 : current + 1};
     _inFlight[id] = (_inFlight[id] ?? 0) + 1;
 
     final repo = _ref.read(habitsRepositoryProvider);
     final completer = Completer<void>();
     final prior = _chains[id] ?? Future<void>.value();
-    final op = prior.then((_) => undo ? repo.uncheck(id) : repo.check(id));
+    final op = prior.then((_) => isDone ? repo.resetChecks(id) : repo.check(id));
     _chains[id] = op.then((_) {}, onError: (_) {});
 
     op.then((_) {

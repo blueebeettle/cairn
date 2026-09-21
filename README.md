@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="brand/play-store/banner-1280x640.png" alt="Cairn Banner" width="100%" />
+  <img src="assets/icon/cairn_icon.png" alt="Cairn Icon" width="140" />
 </p>
 
 <h1 align="center">Cairn</h1>
@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart&logoColor=white" alt="Dart" />
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Desktop-4CAF50" alt="Platform" />
   <img src="https://img.shields.io/badge/Database-Drift%20(SQLite)-003B57" alt="Database" />
-  <img src="https://img.shields.io/badge/Tests-389%20passed-success" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-408%20passed-success" alt="Tests" />
   <img src="https://img.shields.io/badge/Architecture-Event--Sourced-8B3FAE" alt="Architecture" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
 </p>
@@ -37,32 +37,34 @@ Most productivity tools suffer from brittle data models, midnight streak resets 
 ## ✨ Features
 
 ### ⏱️ 1. Focus Timer & Sessions
-- **Interval Flexibility:** Standard Pomodoro or custom focus/break lengths (1–120 minutes).
+- **Interval Flexibility:** Quick presets (15, 25, 45, 60 min) or custom focus/break picker (1–120 minutes).
 - **Foreground Service:** Persistent notification with real-time countdown, pause/resume, and complete controls right from the lock screen.
 - **Interruption Tracking:** Log internal and external interruptions with honest impact analytics.
-- **Session Ratings:** Rate your focus depth and associate sessions with specific projects or tasks.
+- **Session Ratings:** Rate focus depth and associate sessions with specific projects or tasks.
+- **Crash Recovery:** Deterministic timer state machine recovery persists focus sessions across app restarts.
 
 ### ✅ 2. Tasks & Natural Quick Capture
-- **Rapid Keyboard Entry:** Powerful syntax parser:
+- **Rapid Keyboard Entry:** Powerful syntax parser without requiring awkward quotes:
   - `!p1` to `!p4` — Priority levels
   - `#project` — Project tag assignment
-  - `~2p` — Estimated Pomodoros (focus sessions)
-  - `"fri 5pm"`, `"tomorrow 10am"`, `"oct 4"` — Natural language due dates and times
+  - `~2p` or `2p` — Estimated Pomodoros (focus sessions)
+  - `fri 5pm`, `tomorrow 10am`, `oct 4`, `noon`, `midnight` — Natural language due dates and times
 - **Single-Level Subtasks:** Structured decomposition without infinite nesting sprawl.
 - **Recurring Series (RRULE):**
   - **On schedule:** Automatically aligns to fixed schedule dates.
   - **After completion:** Spawns next instance relative to when you actually finish.
-- **Tombstoned Deletion:** Soft-deletion with an immediate undo window and clean event logging.
+- **Tombstoned Deletion:** Soft-deletion with an immediate undo window, archive view, and permanent deletion option.
 
 ### 🌿 3. Resilient Habit Tracking
 - **Rich Scheduling Rules:**
   - Every day
   - Certain weekdays (e.g. Mon, Wed, Fri)
-  - Interval (Every $N$ days)
-  - Monthly (On the $N$th day)
+  - Interval (Every N days)
+  - Monthly (On the Nth day)
 - **Target Counter Habits:** Track habits requiring multiple daily check-offs (e.g., "8 glasses of water").
 - **Streak Shield & Rest Days:** Configure monthly rest day allowances (1–5 days) without breaking your active streak.
 - **Interactive Calendar Heatmap:** Year-long grid of daily completions, rest days, and missed dates with reflective notes.
+- **Flexible View Modes:** Switch between grouped, regular, and compact grid views.
 
 ### 📊 4. Honest Statistics & Analytics
 - **Card 1 — Summary Metrics:** Total focus minutes, completed sessions, and active days.
@@ -80,10 +82,22 @@ Most productivity tools suffer from brittle data models, midnight streak resets 
 - **Daily Digest:** Configurable morning/evening digest notifications summarizing tasks due today and overdue items.
 - **Persistent Notification IDs:** Device-local counter allocation prevents duplicate notification storms or OS ID collisions.
 
-### 🔐 6. Local-First & End-to-End Encryption
-- **Encrypted Cloud Backups:** Backup to Supabase Storage or Google Drive.
+### 📱 6. Android Home Screen Widgets
+- **Habits Widget:** Glanceable checklist with interactive check-off and circular progress ring.
+- **Today at a Glance Widget:** Combined dashboard showing focus time, overdue/due tasks, and pending habits.
+- **Tasks Widget:** Scrollable list of today's tasks with quick completion.
+- **Timer Widget:** Quick-launch focus sessions directly from your home screen.
+- **Appearance Customization:** Toggle between solid dark ground and translucent glassmorphism styles.
+
+### 🔐 7. Local-First, Encrypted Backups & Data Portability
+- **Encrypted Cloud Backups:** Optional end-to-end encrypted backup to Supabase Storage.
 - **Client-Side Cryptography:** Encrypted with **AES-256-GCM** using PBKDF2 key derivation (100,000 iterations), unique salt, and initialization vectors.
 - **Zero-Knowledge:** Passphrase is never transmitted or stored remotely.
+- **CSV Data Export:** One-tap export of tasks, habits, and focus history for complete data ownership.
+
+### 💡 8. Tactile Feedback & In-App Guides
+- **Haptic Feedback:** Tactile confirmation for habit check-offs, task completions, and timer events.
+- **Interactive Concept Guides:** Built-in explanation sheets detailing Cairn's core philosophies (Event Sourcing, Logical Day, Honest Stats, and Streaks).
 
 ---
 
@@ -111,21 +125,21 @@ Cairn follows a warm, earthy, pebble-and-mineral palette with high contrast rati
 
 ## ⌨️ Quick Capture Syntax
 
-From the quick-capture modal (`+`), you can type naturally:
+From the quick-capture modal (`+`), you can type naturally without needing quotation marks:
 
 ```text
-Review Q3 roadmap !p1 #work ~3p "tomorrow 3pm"
-Read 25 pages of Dune !p3 ~1p "fri 9pm"
-File tax return !p2 "oct 15"
+Review Q3 roadmap !p1 #work ~3p tomorrow 3pm
+Read 25 pages of Dune !p3 ~1p fri 9pm
+File tax return !p2 oct 15
 Buy groceries #errands
 ```
 
 | Token | Meaning | Example |
 |---|---|---|
-| `!p1` – `!p4` | Priority level (p1 urgent to p4 low) | `!p1` |
+| `!p1` – `!p4` | Priority level (p1 urgent to p4 low) | `!p1`, `!P2` |
 | `#tag` | Project / category tag | `#work`, `#personal` |
-| `~Np` | Estimated pomodoros | `~2p` (2 focus sessions) |
-| `"..."` | Quoted due date / time | `"today 5pm"`, `"mon 9am"`, `"nov 1"` |
+| `~Np` or `Np` | Estimated pomodoros (focus sessions) | `~2p`, `3p` |
+| `Date / Time` | Natural language due date and time | `today`, `tomorrow 3pm`, `fri 9pm`, `oct 15`, `noon` |
 
 ---
 
@@ -133,23 +147,33 @@ Buy groceries #errands
 
 ```
 lib/
+├── app.dart             # Root MaterialApp with theme wiring & routes
+├── main.dart            # Initialization, service locators & error handling
 ├── core/
 │   ├── constants/       # Event types, recurrence enums, notification bands
-│   ├── crypto/          # AES-256-GCM client-side encryption engine
-│   ├── habits/          # Pure streak calculation engine & RRULE parsing
-│   ├── stats/           # Database-free stats engine (focus & habits)
-│   └── time/            # TimeService, logical day offset & timezone logic
+│   ├── habits/          # Pure streak calculation engine & scheduling
+│   ├── notifications/   # Notification channels, permission helpers & IDs
+│   ├── recurrence/      # Pure RRULE parsing & next instance calculators
+│   ├── stats/           # Database-free stats computation (focus & habits)
+│   ├── time/            # TimeService, logical day offset & timezone logic
+│   └── widgets/         # Feature guide cards & sheets, shared UI primitives
 ├── data/
-│   ├── database/        # Drift database, schema tables & migrations
+│   ├── database/        # Drift SQLite database, schema tables & migrations
 │   ├── providers/       # Riverpod dependency injection & streams
-│   └── repositories/    # Event-sourced repositories (Tasks, Habits, Reminders)
-└── features/
-    ├── backup/          # Supabase & Google Drive encrypted sync
-    ├── habits/          # Habit tracking, streak badges, month grid
-    ├── reminders/       # Notification service & daily digest reconcile
-    ├── stats/           # 9-card analytics dashboard & heatmaps
-    ├── tasks/           # Task list, quick capture & detail sheet
-    └── timer/           # Foreground focus timer service & controls
+│   └── repositories/    # Event-sourced repositories (Tasks, Habits, Reminders, Settings)
+├── features/
+│   ├── backup/          # Supabase encrypted backup & CSV export services
+│   ├── developer/       # Dev seeds, database inspect & diagnostic tooling
+│   ├── habits/          # Habit tracking, streak badges, calendar heatmaps
+│   ├── navigation/      # Navigation shell & bottom navigation bar
+│   ├── reminders/       # Notification service & daily digest reconciliation
+│   ├── settings/        # Theme switcher, logical day rollover, reminder prefs, haptics
+│   ├── stats/           # 9-card analytics dashboard & heatmaps
+│   ├── tasks/           # Task list, NLP quick capture & detail sheet
+│   ├── timer/           # Foreground focus timer service, recovery & controls
+│   ├── today/           # Today screen dashboard (tasks, habits, focus summary)
+│   └── widgets/         # Android home screen widget sync & update dispatch
+└── theme/               # Cairn color tokens, typography & dark/AMOLED/deep palettes
 ```
 
 ### Event-Sourcing Guarantee
@@ -199,10 +223,11 @@ flutter run
 
 ## 🧪 Testing
 
-Cairn maintains a comprehensive test suite of **389 tests** covering:
+Cairn maintains a comprehensive test suite of **408 tests** covering:
 - **Unit tests:** Timezone shifts, DST transitions, logical day boundaries, and recurrence algorithms.
 - **Repository integration tests:** Drift in-memory transactions, event replay, and monotonic notification ID counters.
 - **Widget & Accessibility tests:** 200% font scale layout validation without overflow across all screens.
+- **Home Screen Widgets & Timer Recovery:** AppWidget data synchronization, ring rendering, background mode toggles, and state machine crash recovery.
 
 Run specific test modules:
 ```bash
@@ -215,6 +240,10 @@ flutter test test/habits_feature_test.dart
 
 # 200% accessibility font scale audit
 flutter test test/font_scale_200_audit_test.dart
+
+# Home screen widgets and timer recovery
+flutter test test/home_screen_widget_service_test.dart
+flutter test test/timer_recovery_test.dart
 ```
 
 ---

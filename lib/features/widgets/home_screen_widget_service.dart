@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -117,6 +118,24 @@ class HomeScreenWidgetService {
       await HomeWidget.saveWidgetData<int>('habits_percent', percent);
       await HomeWidget.saveWidgetData<int>('habits_total_count', totalCount);
 
+      // JSON array for the scrollable ListView factory
+      final habitsJsonList = sorted.map((h) {
+        final streak = h.streaks.current;
+        final streakStr = streak > 0 ? '🔥 $streak' : '';
+        return {
+          'id': h.habit.id,
+          'title': h.habit.title,
+          'done': h.isDoneToday,
+          'streak': streakStr,
+          'count': h.countToday,
+          'target': h.habit.targetCount > 0 ? h.habit.targetCount : 1,
+        };
+      }).toList();
+      await HomeWidget.saveWidgetData<String>(
+        'habits_json',
+        jsonEncode(habitsJsonList),
+      );
+
       for (var i = 0; i < habitsWidgetRowCount; i++) {
         if (i < sorted.length) {
           final h = sorted[i];
@@ -219,6 +238,19 @@ class HomeScreenWidgetService {
       await HomeWidget.saveWidgetData<String>(
         'tasks_summary',
         totalCount > 0 ? '$totalCount due today' : 'All clear',
+      );
+
+      // JSON array for the scrollable ListView factory
+      final tasksJsonList = openTasks.map((t) {
+        return {
+          'id': t.id,
+          'title': t.title,
+          'priority': t.priority,
+        };
+      }).toList();
+      await HomeWidget.saveWidgetData<String>(
+        'tasks_json',
+        jsonEncode(tasksJsonList),
       );
 
       for (var i = 0; i < tasksWidgetRowCount; i++) {
@@ -471,7 +503,7 @@ Future<void> _handleToggleHabit(String? habitId) async {
     final snapshot = await habitsRepo.loadSnapshot(habitId);
     if (snapshot != null) {
       if (snapshot.isDoneToday) {
-        await habitsRepo.uncheck(habitId, localDate: today);
+        await habitsRepo.resetChecks(habitId, localDate: today);
       } else {
         await habitsRepo.check(habitId, localDate: today);
       }

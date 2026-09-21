@@ -148,6 +148,33 @@ class SupabaseBackupService {
       throw SupabaseServiceException('Cloud download failed: $e');
     }
   }
+
+  /// Deletes user's cloud backup files from Supabase Storage.
+  Future<void> deleteCloudBackup() async {
+    final user = currentUser;
+    if (user == null || client == null) {
+      throw const SupabaseServiceException('User must be signed in to delete cloud data.');
+    }
+
+    try {
+      final List<String> pathsToDelete = ['${user.id}/latest.cairn'];
+      try {
+        final files = await client!.storage.from('backups').list(path: user.id);
+        for (final file in files) {
+          final p = '${user.id}/${file.name}';
+          if (!pathsToDelete.contains(p)) {
+            pathsToDelete.add(p);
+          }
+        }
+      } catch (_) {
+        // Fallback to latest.cairn if directory listing fails
+      }
+
+      await client!.storage.from('backups').remove(pathsToDelete);
+    } catch (e) {
+      throw SupabaseServiceException('Cloud delete failed: $e');
+    }
+  }
 }
 
 class SupabaseServiceException implements Exception {

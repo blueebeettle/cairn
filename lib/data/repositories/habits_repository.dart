@@ -363,6 +363,32 @@ class HabitsRepository {
     });
   }
 
+  /// Resets today's (or [localDate]'s) check count back to zero.
+  Future<void> resetChecks(String habitId, {String? localDate}) async {
+    final date = localDate ?? timeService.todayLocalDate();
+
+    await db.transaction(() async {
+      final existing = await _entryFor(habitId, date);
+      if (existing == null || existing.checkCount == 0) return;
+
+      await eventsRepository.logEvent(
+        type: EventTypes.habitUnchecked,
+        subjectType: SubjectTypes.habit,
+        subjectId: habitId,
+        localDateOverride: date,
+        payload: {'count_after': 0, 'count_before': existing.checkCount},
+      );
+      await _upsertEntry(
+        habitId: habitId,
+        date: date,
+        existing: existing,
+        checkCount: 0,
+        skipped: existing.skipped,
+        lastCheckedAt: existing.lastCheckedAt,
+      );
+    });
+  }
+
   /// Marks [localDate] a deliberate rest day.
   ///
   /// Writes `habit_skipped` always, and `habit_freeze_used` **in addition**

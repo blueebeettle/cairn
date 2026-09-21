@@ -1,17 +1,26 @@
 package dev.beetlebyte.cairn
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
-import es.antonborri.home_widget.HomeWidgetBackgroundIntent
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 
 class CairnHabitsWidgetProvider : AppWidgetProvider() {
+
+    companion object {
+        const val ACTION_HABIT_CLICK = "dev.beetlebyte.cairn.ACTION_HABIT_CLICK"
+        const val EXTRA_ACTION_TYPE = "dev.beetlebyte.cairn.EXTRA_ACTION_TYPE"
+        const val EXTRA_HABIT_ID = "dev.beetlebyte.cairn.EXTRA_HABIT_ID"
+        const val ACTION_TYPE_TOGGLE = "TOGGLE"
+        const val ACTION_TYPE_OPEN = "OPEN"
+    }
 
     override fun onUpdate(
         context: Context,
@@ -19,14 +28,10 @@ class CairnHabitsWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         for (appWidgetId in appWidgetIds) {
-            render(context, appWidgetManager, appWidgetId, null)
+            render(context, appWidgetManager, appWidgetId)
         }
     }
 
-    /**
-     * A resize alone does not trigger onUpdate, so without this a taller
-     * widget just grows its background instead of showing more habits.
-     */
     override fun onAppWidgetOptionsChanged(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -34,105 +39,84 @@ class CairnHabitsWidgetProvider : AppWidgetProvider() {
         newOptions: Bundle
     ) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
-        render(context, appWidgetManager, appWidgetId, newOptions)
+        render(context, appWidgetManager, appWidgetId)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == ACTION_HABIT_CLICK) {
+            val actionType = intent.getStringExtra(EXTRA_ACTION_TYPE)
+            val habitId = intent.getStringExtra(EXTRA_HABIT_ID) ?: return
+
+            if (actionType == ACTION_TYPE_TOGGLE) {
+                val toggleIntent = Intent(context, es.antonborri.home_widget.HomeWidgetBackgroundReceiver::class.java).apply {
+                    action = "es.antonborri.home_widget.action.BACKGROUND"
+                    data = Uri.parse("cairn://toggle_habit?id=$habitId")
+                }
+                context.sendBroadcast(toggleIntent)
+            } else if (actionType == ACTION_TYPE_OPEN) {
+                val openIntent = Intent(context, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    data = Uri.parse("cairn://widget/habits?id=$habitId")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                context.startActivity(openIntent)
+            }
+        }
     }
 
     private fun render(
         context: Context,
         appWidgetManager: AppWidgetManager,
-        appWidgetId: Int,
-        options: Bundle?
+        appWidgetId: Int
     ) {
         val widgetData = HomeWidgetPlugin.getData(context)
         val views = RemoteViews(context.packageName, R.layout.cairn_habits_widget).apply {
             val date = widgetData.getString("habits_date", "Today") ?: "Today"
             val summary = widgetData.getString("habits_summary", "0 / 0 Done") ?: "0 / 0 Done"
             val progress = widgetData.getInt("habits_percent", 0)
-            val totalCount = widgetData.getInt("habits_total_count", 0)
 
             setTextViewText(R.id.widget_date, date)
             setTextViewText(R.id.widget_progress_text, summary)
             setProgressBar(R.id.widget_progress_bar, 100, progress, false)
 
-            val rowIds = arrayOf(
-                R.id.habit_row_1, R.id.habit_row_2, R.id.habit_row_3, R.id.habit_row_4,
-                R.id.habit_row_5, R.id.habit_row_6, R.id.habit_row_7, R.id.habit_row_8
-            )
-            val checkIds = arrayOf(
-                R.id.habit_1_check, R.id.habit_2_check, R.id.habit_3_check, R.id.habit_4_check,
-                R.id.habit_5_check, R.id.habit_6_check, R.id.habit_7_check, R.id.habit_8_check
-            )
-            val titleIds = arrayOf(
-                R.id.habit_1_title, R.id.habit_2_title, R.id.habit_3_title, R.id.habit_4_title,
-                R.id.habit_5_title, R.id.habit_6_title, R.id.habit_7_title, R.id.habit_8_title
-            )
-            val streakIds = arrayOf(
-                R.id.habit_1_streak, R.id.habit_2_streak, R.id.habit_3_streak, R.id.habit_4_streak,
-                R.id.habit_5_streak, R.id.habit_6_streak, R.id.habit_7_streak, R.id.habit_8_streak
-            )
+            // Connect RemoteViewsService for scrollable ListView
+            val serviceIntent = Intent(context, CairnHabitsWidgetService::class.java).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+            }
+            setRemoteAdapter(R.id.habits_list, serviceIntent)
+            setEmptyView(R.id.habits_list, R.id.widget_empty_text)
 
-            val rowCap = WidgetRowSizing.rowsThatFit(
-                appWidgetManager,
+            // Template PendingIntent for collection items
+            val itemClickIntent = Intent(context, CairnHabitsWidgetProvider::class.java).apply {
+                action = ACTION_HABIT_CLICK
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            val itemClickPendingIntent = PendingIntent.getBroadcast(
+                context,
                 appWidgetId,
-                WidgetRowSizing.HABITS_CHROME_DP,
-                rowIds.size,
-                options
+                itemClickIntent,
+                flags
             )
+            setPendingIntentTemplate(R.id.habits_list, itemClickPendingIntent)
 
-            var visibleRows = 0
-            for (i in rowIds.indices) {
-                val habitTitle = widgetData.getString("habit_${i + 1}_title", null)
-                val habitId = widgetData.getString("habit_${i + 1}_id", null)
-                if (habitTitle != null && i < rowCap) {
-                    val isDone = widgetData.getBoolean("habit_${i + 1}_done", false)
-                    val streak = widgetData.getString("habit_${i + 1}_streak", "") ?: ""
-                    val count = widgetData.getInt("habit_${i + 1}_count", 0)
-                    val target = widgetData.getInt("habit_${i + 1}_target", 1)
-
-                    setViewVisibility(rowIds[i], View.VISIBLE)
-                    setTextViewText(titleIds[i], habitTitle)
-                    setTextViewText(streakIds[i], streak)
-                    setImageViewBitmap(
-                        checkIds[i],
-                        HabitRingRenderer.render(context, count, target, isDone)
-                    )
-
-                    if (habitId != null) {
-                        val toggleIntent = HomeWidgetBackgroundIntent.getBroadcast(
-                            context,
-                            Uri.parse("cairn://toggle_habit?id=$habitId")
-                        )
-                        setOnClickPendingIntent(checkIds[i], toggleIntent)
-
-                        val openHabitIntent = HomeWidgetLaunchIntent.getActivity(
-                            context,
-                            MainActivity::class.java,
-                            Uri.parse("cairn://widget/habits?id=$habitId")
-                        )
-                        setOnClickPendingIntent(titleIds[i], openHabitIntent)
-                    }
-
-                    visibleRows++
-                } else {
-                    setViewVisibility(rowIds[i], View.GONE)
-                }
-            }
-
-            if (totalCount > 0 && visibleRows == 0) {
-                setViewVisibility(R.id.widget_empty_text, View.VISIBLE)
-            } else {
-                setViewVisibility(R.id.widget_empty_text, View.GONE)
-            }
-
-            // Launch Cairn Habits screen on tap
-            val pendingIntent = HomeWidgetLaunchIntent.getActivity(
+            // Launch Cairn Habits screen on tap of background or title
+            val launchIntent = HomeWidgetLaunchIntent.getActivity(
                 context,
                 MainActivity::class.java,
                 Uri.parse("cairn://widget/habits")
             )
-            setOnClickPendingIntent(R.id.widget_bg, pendingIntent)
+            setOnClickPendingIntent(R.id.widget_bg, launchIntent)
+            setOnClickPendingIntent(R.id.widget_title, launchIntent)
         }
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
+        try {
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.habits_list)
+        } catch (e: Exception) {
+            // Widget may be removed or in the process of deletion
+        }
     }
 }

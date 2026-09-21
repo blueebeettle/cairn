@@ -397,6 +397,25 @@ class BackupController extends StateNotifier<BackupState> {
     }
   }
 
+  /// Deletes encrypted backup data from the user's cloud vault.
+  Future<bool> deleteCloudData() async {
+    state = state.copyWith(isCloudSyncing: true, lastErrorMessage: null);
+    try {
+      await supabaseService.deleteCloudBackup();
+      state = state.copyWith(
+        isCloudSyncing: false,
+        lastSuccessMessage: 'Cloud backup data was deleted successfully.',
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isCloudSyncing: false,
+        lastErrorMessage: 'Failed to delete cloud data: $e',
+      );
+      return false;
+    }
+  }
+
   /// Returns current counts of sessions, tasks and habits for restore confirmation.
   Future<({int sessionCount, int taskCount, int habitCount})>
       getCurrentDataCounts() {

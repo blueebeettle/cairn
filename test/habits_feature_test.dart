@@ -419,7 +419,7 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('completes at the target; one more tap undoes one', (tester) async {
+    testWidgets('completes at the target; one more tap resets back to 0', (tester) async {
       _phone(tester);
       final semantics = tester.ensureSemantics();
       final h = _Harness('2026-09-14');
@@ -438,11 +438,11 @@ void main() {
       expect(find.bySemanticsLabel('Pages, done today'), findsOneWidget);
       expect(_streakLabels(tester), ['1 day streak']);
 
-      // No confirm dialog: one tap puts one back.
+      // One tap resets back to 0.
       await tester.tap(find.bySemanticsLabel('Pages, done today'));
       await _settle(tester);
       expect(find.byType(AlertDialog), findsNothing);
-      expect((await h.repo.loadSnapshot(id))!.countToday, 2);
+      expect((await h.repo.loadSnapshot(id))!.countToday, 0);
       semantics.dispose();
     });
   });
@@ -1197,6 +1197,96 @@ void main() {
       final t = restDayAllowanceText(snap, '2026-09-03');
       expect(t.warn, isTrue);
       expect(t.text, contains('skipping again will reset your streak'));
+    });
+
+    test('multi-count habit cycles 0 -> 1 -> 2 -> 3 -> 0 on tap', () async {
+      final h = _Harness('2026-09-15');
+      addTearDown(h.db.close);
+      final id = await h.repo.createHabit(
+        title: 'Water',
+        scheduleRule: 'FREQ=DAILY',
+        targetCount: 3,
+      );
+      final container = ProviderContainer(overrides: h.overrides);
+      addTearDown(container.dispose);
+      final controller = container.read(habitCheckControllerProvider.notifier);
+
+      // Initial: 0
+      var snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 0);
+
+      // Tap 1 -> 1
+      await controller.tap(snap);
+      snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 1);
+
+      // Tap 2 -> 2
+      await controller.tap(snap);
+      snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 2);
+
+      // Tap 3 -> 3 (done)
+      await controller.tap(snap);
+      snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 3);
+      expect(snap.isDoneToday, isTrue);
+
+      // Tap 4 (once completed) -> resets to 0
+      await controller.tap(snap);
+      snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 0);
+      expect(snap.isDoneToday, isFalse);
+    });
+
+    test('single-count habit cycles 0 -> 1 -> 0 on tap', () async {
+      final h = _Harness('2026-09-15');
+      addTearDown(h.db.close);
+      final id = await h.repo.createHabit(
+        title: 'Floss',
+        scheduleRule: 'FREQ=DAILY',
+        targetCount: 1,
+      );
+      final container = ProviderContainer(overrides: h.overrides);
+      addTearDown(container.dispose);
+      final controller = container.read(habitCheckControllerProvider.notifier);
+
+      var snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 0);
+
+      // Tap 1 -> 1 (done)
+      await controller.tap(snap);
+      snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 1);
+      expect(snap.isDoneToday, isTrue);
+
+      // Tap 2 -> 0 (reset)
+      await controller.tap(snap);
+      snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 0);
+      expect(snap.isDoneToday, isFalse);
+    });
+
+    test('HabitsRepository.resetChecks resets count to 0 and logs habitUnchecked event', () async {
+      final h = _Harness('2026-09-15');
+      addTearDown(h.db.close);
+      final id = await h.repo.createHabit(
+        title: 'Meditate',
+        scheduleRule: 'FREQ=DAILY',
+        targetCount: 3,
+      );
+
+      await h.repo.check(id);
+      await h.repo.check(id);
+      await h.repo.check(id);
+      var snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 3);
+
+      await h.repo.resetChecks(id);
+      snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.countToday, 0);
+
+      final events = await h.db.select(h.db.events).get();
+      expect(events.any((e) => e.type == EventTypes.habitUnchecked), isTrue);
     });
   });
 }
