@@ -45,7 +45,7 @@ dart run build_runner build --delete-conflicting-outputs
 ```
 
 ### 2. Time Semantics & Event Sourcing
-Cairn is built around strict architectural rules (detailed in [docs/SPEC.md](docs/SPEC.md)):
+Cairn is built around strict architectural rules:
 - **Immutable Events:** User actions append to `events`. Never delete or update an existing event row.
 - **Logical Day Rollover:** Day boundaries roll over at `04:00 AM` by default. Never use local wall-clock strings as the source of truth for instants — all timestamps are UTC milliseconds.
 - **Honest Statistics:** Never return `0%` when a metric's denominator is zero; always return `null` (renders as em dash `—`).

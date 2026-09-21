@@ -219,15 +219,14 @@ flutter test test/font_scale_200_audit_test.dart
 
 ---
 
-## 📚 Documentation
+## 🏛️ Architecture & Standards
 
-Detailed technical documents, architectural designs, and deployment checklists can be found in the [`docs/`](docs/) folder:
+Cairn is engineered with strict domain boundaries and architectural guarantees:
 
-- [**docs/SPEC.md**](docs/SPEC.md) — Comprehensive build specification, event-sourced schema, and time semantics.
-- [**docs/ACCOUNTS.md**](docs/ACCOUNTS.md) — Authentication setup, Google Sign-In SHA-1 certificates, and Row Level Security.
-- [**docs/POLISH.md**](docs/POLISH.md) — Design tokens, visual consistency, and 200% font scale accessibility guidelines.
-- [**docs/RELEASE.md**](docs/RELEASE.md) — Production build generation, Android keystore signing, and release readiness.
-- [**docs/SUPABASE.md**](docs/SUPABASE.md) — Cloud backup database policies and storage lockdown.
+- **Event-Sourced Ledger**: User actions append immutable entries to the `events` table; projections are rebuilt deterministically.
+- **Strict Time Semantics**: Logical day rollover occurs at `04:00 AM` by default. Timestamps use UTC epoch milliseconds with explicit timezone offsets.
+- **Honest Statistics**: Metrics never report `0%` when the denominator is zero, distinguishing true absence of data from positive zero.
+- **Accessibility**: All screens and dialogs are verified to scale cleanly at 200% text scale with zero layout overflow.
 
 ---
 

@@ -51,6 +51,6 @@ app.*.map.json
 *credentials*.txt
 KEYSTORE_CREDENTIALS.txt
 
-# Assistant outputs
-Claude outputs/
+# Documentation (excluded from git)
+docs/
 
