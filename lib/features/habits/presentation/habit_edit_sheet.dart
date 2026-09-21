@@ -264,7 +264,22 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
         // No notification plugin (desktop, tests). The habit is saved.
       }
 
-      if (mounted) Navigator.of(context).pop(id);
+      if (!mounted) return;
+
+      // Only on a brand-new habit — editing an existing one is not the
+      // moment to start asking for permissions. Pop first, prompt after —
+      // see TaskDetailSheet._createTask.
+      final isNewHabit = widget.habit == null;
+      final settingsRepo = ref.read(settingsRepositoryProvider);
+      final rootContext = Navigator.of(context, rootNavigator: true).context;
+      Navigator.of(context).pop(id);
+
+      if (isNewHabit && rootContext.mounted) {
+        await NotificationPermissionHelper.ensureOnFirstItemCreated(
+          rootContext,
+          settingsRepo,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);

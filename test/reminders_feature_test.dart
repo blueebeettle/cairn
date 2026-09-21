@@ -212,6 +212,28 @@ void main() {
       expect(id3, equals(1002));
     });
 
+    // Reminder reconciliation schedules every task/habit in parallel
+    // (ReminderService.reconcileAll/reconcileHabits use Future.wait), so
+    // several rows that all still need a fresh id call this at the same
+    // moment. Without the transaction in getNextNotificationId the
+    // read-then-write interleaves and two callers are handed the same id,
+    // silently collapsing two reminders into one Android notification.
+    test('Allocates distinct notification IDs under concurrent callers', () async {
+      const callers = 25;
+
+      final ids = await Future.wait(
+        List.generate(callers, (_) => settingsRepo.getNextNotificationId()),
+      );
+
+      expect(ids.toSet().length, equals(callers),
+          reason: 'every concurrent caller must get its own id');
+      expect(ids.toSet(), equals({for (var i = 0; i < callers; i++) 1000 + i}),
+          reason: 'ids must stay a contiguous monotonic block, no gaps');
+      expect(await settingsRepo.getInt('next_notification_id'),
+          equals(1000 + callers),
+          reason: 'counter must land exactly one past the last id handed out');
+    });
+
     test('Creates task with future due date -> schedules reminder', () async {
       final futureDueMs = DateTime.now().add(const Duration(minutes: 30)).millisecondsSinceEpoch;
 
@@ -436,6 +458,57 @@ void main() {
           }
         }
       }
+    });
+  });
+
+  group('First-item notification permission prompt', () {
+    setUp(NotificationPermissionHelper.resetSessionPrompt);
+    tearDown(NotificationPermissionHelper.resetSessionPrompt);
+
+    testWidgets('prompts on the first created item and never again', (tester) async {
+      NotificationPermissionHelper.mockPermissionGranted = false;
+      var promptsShown = 0;
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () async {
+                await NotificationPermissionHelper.ensureOnFirstItemCreated(
+                  context,
+                  settingsRepo,
+                );
+              },
+              child: const Text('create'),
+            ),
+          ),
+        ),
+      ));
+
+      // First creation: the pre-dialog appears.
+      await tester.tap(find.text('create'));
+      await tester.pumpAndSettle();
+      if (find.text('Let Cairn notify you?').evaluate().isNotEmpty) {
+        promptsShown++;
+        await tester.tap(find.text('Not now'));
+        await tester.pumpAndSettle();
+      }
+      expect(promptsShown, equals(1),
+          reason: 'the first task or habit must trigger the prompt');
+      expect(await settingsRepo.getInt(
+              NotificationPermissionHelper.firstItemPromptedKey),
+          equals(1),
+          reason: 'the flag must persist so later launches stay quiet');
+
+      // Declining is remembered even across a fresh app session.
+      NotificationPermissionHelper.resetSessionPrompt();
+      NotificationPermissionHelper.mockPermissionGranted = false;
+
+      await tester.tap(find.text('create'));
+      await tester.pumpAndSettle();
+      expect(find.text('Let Cairn notify you?'), findsNothing,
+          reason: 'a second creation must never re-prompt');
     });
   });
 

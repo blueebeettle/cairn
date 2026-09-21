@@ -1,15 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/today_widget_root"
     android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Background + "open the app" target. Lives BENEATH the content so
+         row checkboxes and buttons get the touch first; a listener on the
+         root itself would swallow every child click. -->
+    <ImageView
+        android:id="@+id/today_widget_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="Open Cairn"
+        android:background="@drawable/cairn_widget_background" />
+
+    <LinearLayout
+        android:id="@+id/today_widget_content"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/cairn_widget_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="12dp"
     android:paddingTop="10dp"
     android:paddingEnd="12dp"
     android:paddingBottom="10dp">
+
 
     <!-- Metric 1: Focus Minutes -->
     <LinearLayout
@@ -127,5 +142,6 @@
             android:textColor="@color/widget_text_muted"
             android:textSize="9sp" />
     </LinearLayout>
+    </LinearLayout>
 
-</LinearLayout>
+</FrameLayout>

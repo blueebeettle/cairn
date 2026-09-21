@@ -12,6 +12,7 @@ import '../../habits/presentation/habits_screen.dart';
 import '../../reminders/reminder_service.dart';
 import '../../stats/presentation/stats_screen.dart';
 import '../../tasks/presentation/tasks_screen.dart';
+import '../../timer/presentation/timer_controller.dart';
 import '../../timer/presentation/timer_screen.dart';
 import '../../today/presentation/today_screen.dart';
 import '../../widgets/home_screen_widget_service.dart';
@@ -72,8 +73,16 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
 
   void _handleWidgetClick(Uri uri) {
     final tab = HomeScreenWidgetService.parseWidgetUri(uri);
-    if (tab != null && mounted) {
-      ref.read(navigationIndexProvider.notifier).state = tab;
+    if (tab == null || !mounted) return;
+    ref.read(navigationIndexProvider.notifier).state = tab;
+
+    // A task row carries its id so the Tasks tab can open straight onto it,
+    // the same way a tapped task reminder does.
+    if (tab == NavTabs.tasks) {
+      final taskId = uri.queryParameters['id'];
+      if (taskId != null && taskId.isNotEmpty) {
+        ref.read(activeTaskIdProvider.notifier).state = taskId;
+      }
     }
   }
 
@@ -89,7 +98,14 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkDay(onResume: true);
-      ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
+      // Widget taps mutate timer_states from a background isolate, so re-read
+      // the DB before pushing anything back out — otherwise the outbound sync
+      // would overwrite the widget with this controller's stale view.
+      unawaited(() async {
+        await ref.read(timerControllerProvider.notifier).reconcileOnResume();
+        if (!mounted) return;
+        await ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
+      }());
     }
   }
 
@@ -135,6 +151,12 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
     });
     final todayDate = ref.watch(timeServiceProvider).todayLocalDate();
     ref.listen(todayTasksStreamProvider(todayDate), (_, next) {
+      ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
+    });
+    // Status only, never the whole state: the 500ms ticker re-emits state on
+    // every tick, and pushing a widget update that often is wasted battery
+    // (Android throttles rapid updateWidget calls anyway).
+    ref.listen(timerControllerProvider.select((s) => s.status), (_, _) {
       ref.read(homeScreenWidgetServiceProvider).syncAllWidgets(ref);
     });
 

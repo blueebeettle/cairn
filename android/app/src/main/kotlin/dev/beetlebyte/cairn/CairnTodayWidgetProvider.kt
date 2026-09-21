@@ -45,7 +45,7 @@ class CairnTodayWidgetProvider : AppWidgetProvider() {
                 setOnClickPendingIntent(R.id.today_focus_section, timerIntent)
                 setOnClickPendingIntent(R.id.today_habits_section, habitsIntent)
                 setOnClickPendingIntent(R.id.today_tasks_section, todayIntent)
-                setOnClickPendingIntent(R.id.today_widget_root, todayIntent)
+                setOnClickPendingIntent(R.id.today_widget_bg, todayIntent)
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)

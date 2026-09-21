@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/notifications/notification_permission_helper.dart';
 import '../../../core/widgets/focus_ring.dart';
+import '../../../core/widgets/feature_info.dart';
+import '../../../core/widgets/feature_info_content.dart';
 import '../../../data/providers/database_provider.dart';
 import '../../../theme/app_theme.dart';
 import '../domain/timer_state.dart';
@@ -31,8 +33,24 @@ class TimerScreen extends ConsumerStatefulWidget {
   ConsumerState<TimerScreen> createState() => _TimerScreenState();
 }
 
+/// The fixed length options. Anything else is a "custom" length.
+const List<int> _presetMinutes = [15, 25, 45, 60];
+
+/// Bounds for a custom focus length. Five minutes is the shortest span that
+/// still produces a session worth recording; three hours is well past any
+/// realistic single sitting and keeps the slider usable.
+const int _customMinMinutes = 5;
+const int _customMaxMinutes = 180;
+
+/// Settings key holding the last custom length, so reopening the picker
+/// starts where the user left it instead of resetting to a default.
+const String _customMinutesKey = 'timer_custom_minutes';
+
 class _TimerScreenState extends ConsumerState<TimerScreen> {
   int? _selectedRating;
+
+  /// Last custom length the user picked, remembered across restarts.
+  int _customMinutes = 30;
 
   @override
   void initState() {
@@ -40,6 +58,54 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     Future.microtask(() {
       ref.read(timerControllerProvider.notifier).initialize();
     });
+    Future.microtask(_loadCustomMinutes);
+  }
+
+  Future<void> _loadCustomMinutes() async {
+    try {
+      final stored =
+          await ref.read(settingsRepositoryProvider).getInt(_customMinutesKey);
+      if (stored != null && mounted) {
+        setState(() => _customMinutes = _clampCustom(stored));
+      }
+    } catch (_) {
+      // Falls back to the default; never worth failing the screen over.
+    }
+  }
+
+  static int _clampCustom(int minutes) =>
+      minutes.clamp(_customMinMinutes, _customMaxMinutes);
+
+  bool _isCustomSelected(int plannedDurationS) {
+    if (plannedDurationS <= 0 || plannedDurationS % 60 != 0) return true;
+    return !_presetMinutes.contains(plannedDurationS ~/ 60);
+  }
+
+  /// Opens the custom-length picker and applies the result.
+  Future<void> _pickCustomDuration(
+    TimerController controller,
+    int plannedDurationS,
+  ) async {
+    final current = _isCustomSelected(plannedDurationS)
+        ? _clampCustom(plannedDurationS ~/ 60)
+        : _customMinutes;
+
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => _CustomDurationDialog(initialMinutes: current),
+    );
+    if (picked == null || !mounted) return;
+
+    final minutes = _clampCustom(picked);
+    setState(() => _customMinutes = minutes);
+    controller.setPlannedDuration(minutes * 60);
+    try {
+      await ref
+          .read(settingsRepositoryProvider)
+          .setInt(_customMinutesKey, minutes);
+    } catch (_) {
+      // The length is already applied to this session either way.
+    }
   }
 
   @override
@@ -63,6 +129,9 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
+        actions: const [
+          FeatureInfoButton(info: FeatureInfoContent.timer),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -77,7 +146,17 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                   top: topPadding,
                   bottom: 32,
                 ),
-                child: _buildGroupedContent(context, timerState),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const FeatureInfoCard(
+                      info: FeatureInfoContent.timer,
+                      padding: EdgeInsets.only(bottom: 12),
+                    ),
+                    _buildGroupedContent(context, timerState),
+                  ],
+                ),
               ),
             ),
           ),
@@ -125,13 +204,39 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Duration Chips (4 equal width)
+          // Duration chips: four presets plus Custom, all equal width.
           if (timerState.isPomodoro)
             Row(
-              children: [15, 25, 45, 60].map((minutes) {
-                final seconds = minutes * 60;
-                final isSelected = timerState.plannedDurationS == seconds;
-                return Expanded(
+              children: [
+                ..._presetMinutes.map((minutes) {
+                  final seconds = minutes * 60;
+                  final isSelected = timerState.plannedDurationS == seconds;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: FilterChip(
+                        showCheckmark: false,
+                        label: Center(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('$minutes min'),
+                          ),
+                        ),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          if (selected) {
+                            controller.setPlannedDuration(seconds);
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                }),
+                // Selected whenever the planned length is not one of the
+                // presets, so a custom length still reads as "the chosen one"
+                // when you come back to the screen. Shows the value itself
+                // once picked rather than a generic "Custom".
+                Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
                     child: FilterChip(
@@ -139,19 +244,22 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                       label: Center(
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text('$minutes min'),
+                          child: Text(
+                            _isCustomSelected(timerState.plannedDurationS)
+                                ? '${timerState.plannedDurationS ~/ 60} min'
+                                : 'Custom',
+                          ),
                         ),
                       ),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        if (selected) {
-                          controller.setPlannedDuration(seconds);
-                        }
-                      },
+                      selected: _isCustomSelected(timerState.plannedDurationS),
+                      onSelected: (_) => _pickCustomDuration(
+                        controller,
+                        timerState.plannedDurationS,
+                      ),
                     ),
                   ),
-                );
-              }).toList(),
+                ),
+              ],
             )
           else
             const SizedBox(height: 40),
@@ -685,5 +793,100 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     final mStr = m.toString().padLeft(2, '0');
     final sStr = s.toString().padLeft(2, '0');
     return '$mStr:$sStr';
+  }
+}
+
+/// Picker for a custom focus length.
+///
+/// A slider in five-minute steps covers the whole range quickly, and the
+/// -/+ buttons handle the last bit of precision without fighting the slider
+/// on a small screen.
+class _CustomDurationDialog extends StatefulWidget {
+  const _CustomDurationDialog({required this.initialMinutes});
+
+  final int initialMinutes;
+
+  @override
+  State<_CustomDurationDialog> createState() => _CustomDurationDialogState();
+}
+
+class _CustomDurationDialogState extends State<_CustomDurationDialog> {
+  late int _minutes = widget.initialMinutes
+      .clamp(_customMinMinutes, _customMaxMinutes);
+
+  void _nudge(int delta) {
+    setState(() {
+      _minutes =
+          (_minutes + delta).clamp(_customMinMinutes, _customMaxMinutes);
+    });
+  }
+
+  String get _readable {
+    final h = _minutes ~/ 60;
+    final m = _minutes % 60;
+    if (h == 0) return '$m min';
+    if (m == 0) return h == 1 ? '1 hour' : '$h hours';
+    return '${h}h ${m}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return AlertDialog(
+      title: const Text('Custom focus length'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_readable, style: textTheme.headlineMedium),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton.outlined(
+                onPressed:
+                    _minutes > _customMinMinutes ? () => _nudge(-5) : null,
+                icon: const Icon(Icons.remove),
+                tooltip: 'Five minutes shorter',
+              ),
+              Expanded(
+                child: Slider(
+                  value: _minutes.toDouble(),
+                  min: _customMinMinutes.toDouble(),
+                  max: _customMaxMinutes.toDouble(),
+                  divisions:
+                      (_customMaxMinutes - _customMinMinutes) ~/ 5,
+                  label: _readable,
+                  onChanged: (v) => setState(() => _minutes = v.round()),
+                ),
+              ),
+              IconButton.outlined(
+                onPressed:
+                    _minutes < _customMaxMinutes ? () => _nudge(5) : null,
+                icon: const Icon(Icons.add),
+                tooltip: 'Five minutes longer',
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Anything from $_customMinMinutes minutes to '
+            '${_customMaxMinutes ~/ 60} hours.',
+            style: textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_minutes),
+          child: const Text('Use this'),
+        ),
+      ],
+    );
   }
 }

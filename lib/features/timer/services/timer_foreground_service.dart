@@ -1,6 +1,23 @@
 import 'dart:async';
+import 'dart:isolate';
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
+import '../../widgets/home_screen_widget_service.dart';
+
+/// The port name flutter_foreground_task registers in [IsolateNameServer]
+/// from `FlutterForegroundTask.initCommunicationPort()`.
+///
+/// The package exposes `sendDataToMain()` but no way to ask whether anything
+/// is actually listening, and that distinction is exactly what decides
+/// between handing a button press to the live UI and applying it to the
+/// database directly. Mirrored here deliberately. If the package ever renames
+/// it this lookup just returns null and every press takes the database path —
+/// still correct, only without the instant on-screen update.
+const String _kForegroundTaskPortName =
+    'flutter_foreground_task/isolateComPort';
 
 /// Top-level callback required by flutter_foreground_task.
 @pragma('vm:entry-point')
@@ -21,7 +38,27 @@ class TimerTaskHandler extends TaskHandler {
 
   @override
   void onNotificationButtonPressed(String id) {
-    FlutterForegroundTask.sendDataToMain({'action': id});
+    // Fast path: the app is alive, so hand the press to TimerController and
+    // let it update the visible UI immediately.
+    final SendPort? mainIsolate =
+        IsolateNameServer.lookupPortByName(_kForegroundTaskPortName);
+    if (mainIsolate != null) {
+      mainIsolate.send({'action': id});
+      return;
+    }
+
+    // No main isolate — the app process is gone while this service kept
+    // running. FlutterForegroundTask.sendDataToMain() would look up the same
+    // (absent) port and silently drop the press, which is why these buttons
+    // appeared dead after the app was killed. Write straight to the database
+    // instead, exactly as the home-screen widget's buttons do; the app
+    // re-derives from it on next resume.
+    //
+    // 'skip' mid-session means the same thing the widget's Stop does: bail
+    // out early and abandon. A running *break* is deliberately left alone
+    // here (the widget guards it the same way) — the in-app path handles
+    // break skipping when there is a UI to handle it.
+    unawaited(applyTimerActionFromBackground(id == 'skip' ? 'stop' : id));
   }
 
   @override
@@ -52,7 +89,9 @@ class TimerForegroundService {
   Future<void> init() async {
     if (!isSupported || _initialized) return;
 
-    FlutterForegroundTask.initCommunicationPort();
+    if (IsolateNameServer.lookupPortByName(_kForegroundTaskPortName) == null) {
+      FlutterForegroundTask.initCommunicationPort();
+    }
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/time/time_service.dart';
 import '../../../data/providers/database_provider.dart';
 import '../../../data/repositories/tasks_repository.dart';
+import '../../../core/widgets/feature_info.dart';
+import '../../../core/widgets/feature_info_content.dart';
 import '../../../theme/app_theme.dart';
 import '../../timer/presentation/timer_controller.dart';
 import 'archived_tasks_screen.dart';
@@ -65,6 +67,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           ),
         ),
         actions: [
+          const FeatureInfoButton(info: FeatureInfoContent.tasks),
           // Project filter or add project button
           IconButton(
             tooltip: 'New Project',
@@ -156,6 +159,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            const FeatureInfoCard(info: FeatureInfoContent.tasks),
             // Project Filter Bar (if projects exist)
             projectsAsync.when(
               data: (projects) {

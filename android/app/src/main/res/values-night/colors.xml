@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dark-theme widget colours. These are the values the widgets used
+  unconditionally before they followed the device theme; the light
+  equivalents now live in values/colors.xml. See that file for why every
+  name has to appear in both.
+-->
+<resources>
+    <color name="widget_background">#1F1728</color>
+    <color name="widget_surface">#2A2035</color>
+    <color name="widget_surface_subtle">#251C30</color>
+
+    <!-- Pale lavender fill with near-black text on top (~11:1). -->
+    <color name="widget_accent">#C08FE8</color>
+    <color name="widget_accent_brand">#590D86</color>
+    <color name="widget_on_accent">#1F1728</color>
+
+    <color name="widget_text_primary">#F3EBF0</color>
+    <color name="widget_text_secondary">#C4B6CE</color>
+    <color name="widget_text_muted">#9385A0</color>
+
+    <color name="widget_border">#3A2E47</color>
+    <color name="widget_progress_track">#352943</color>
+    <color name="widget_check_done">#81C784</color>
+</resources>

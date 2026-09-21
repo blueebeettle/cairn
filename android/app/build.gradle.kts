@@ -54,6 +54,31 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+    // Builds one APK per CPU architecture instead of a single "universal"
+    // APK that bundles native libraries for all four at once — that
+    // duplication was the majority of the 68MB release APK's size.
+    // `flutter build apk` picks this up automatically and produces
+    // app-armeabi-v7a-release.apk, app-arm64-v8a-release.apk,
+    // app-x86_64-release.apk (each roughly a quarter of the old size) plus
+    // a small "universal" one as a fallback. arm64-v8a is the one that
+    // covers virtually every phone sold in the last ~6 years — that's the
+    // file to hand testers on modern devices; the others exist for
+    // older/emulator hardware.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86_64")
+            isUniversalApk = true
         }
     }
 }

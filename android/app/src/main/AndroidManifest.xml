@@ -84,6 +84,30 @@
                 android:resource="@xml/cairn_today_widget_info" />
         </receiver>
 
+        <receiver android:name=".CairnTasksWidgetProvider"
+            android:label="@string/tasks_widget_name"
+            android:description="@string/tasks_widget_description"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/cairn_tasks_widget_info" />
+        </receiver>
+
+        <receiver android:name=".CairnTimerWidgetProvider"
+            android:label="@string/timer_widget_name"
+            android:description="@string/timer_widget_description"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/cairn_timer_widget_info" />
+        </receiver>
+
         <!-- HomeWidget Background Interactivity for 1-Tap Widget Check-Offs -->
         <receiver android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
             android:exported="true">

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/habits/habit_streak.dart';
 import '../../../data/providers/habit_providers.dart';
 import '../../../data/repositories/habits_repository.dart';
+import '../../../core/widgets/feature_info.dart';
+import '../../../core/widgets/feature_info_content.dart';
 import '../../../theme/app_theme.dart';
 import '../domain/habit_presentation.dart';
 import 'archived_habits_screen.dart';
@@ -49,6 +51,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
           ),
         ),
         actions: [
+          const FeatureInfoButton(info: FeatureInfoContent.habits),
           IconButton(
             tooltip: mode == HabitViewMode.streak
                 ? 'Switch to list view'
@@ -87,7 +90,11 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
         child: const Icon(Icons.add_rounded),
       ),
       body: SafeArea(
-        child: snapshotsAsync.when(
+        child: Column(
+          children: [
+            const FeatureInfoCard(info: FeatureInfoContent.habits),
+            Expanded(
+              child: snapshotsAsync.when(
           // Every check-off writes habit_entries, which makes the snapshots
           // provider RELOAD (a dependency changed) — not refresh. Without
           // this the whole list flashes to a spinner on every tap.
@@ -98,6 +105,9 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
           data: (snapshots) => snapshots.isEmpty
               ? const _EmptyHabits()
               : _buildList(context, snapshots, mode),
+              ),
+            ),
+          ],
         ),
       ),
     );

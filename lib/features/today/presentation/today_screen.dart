@@ -9,6 +9,8 @@ import '../../../data/repositories/stats_repository.dart';
 import '../../../data/repositories/tasks_repository.dart';
 import '../../../theme/app_theme.dart';
 import 'package:flutter/foundation.dart';
+import '../../../core/widgets/feature_info.dart';
+import '../../../core/widgets/feature_info_content.dart';
 import '../../developer/presentation/developer_events_screen.dart';
 import '../../habits/presentation/widgets/today_habits_section.dart';
 import '../../settings/presentation/settings_screen.dart';
@@ -73,6 +75,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           ),
         ),
         actions: [
+          const FeatureInfoButton(info: FeatureInfoContent.today),
           // Settings screen action per POLISH §4
           IconButton(
             tooltip: 'Settings',
@@ -129,8 +132,16 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
               ref.read(themeModeProvider.notifier).state = next;
             },
           ),
-          // Today button (enabled when not on today to quickly return)
+          // Today button (enabled when not on today to quickly return).
+          // Compact padding: this bar carries five actions, and at a 200%
+          // font scale the default TextButton padding is what tips the row
+          // into an overflow.
           TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             onPressed: isToday
                 ? null
                 : () {

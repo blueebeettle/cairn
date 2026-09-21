@@ -3,7 +3,8 @@
     android:description="@string/habits_widget_description"
     android:initialLayout="@layout/cairn_habits_widget"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="190dp"
+    android:previewImage="@drawable/cairn_widget_preview_habits"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

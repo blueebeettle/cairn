@@ -11,6 +11,8 @@ import '../../../data/providers/habit_analytics_providers.dart';
 import '../../../data/repositories/analytics_repository.dart';
 import '../../../features/habits/domain/habit_presentation.dart';
 import '../../../features/habits/presentation/widgets/habit_marks.dart';
+import '../../../core/widgets/feature_info.dart';
+import '../../../core/widgets/feature_info_content.dart';
 import '../../../theme/app_theme.dart';
 
 /// Full implementation of the Stats screen per SPEC.md §4 and PROMPT-stats-screen.md.
@@ -42,10 +44,17 @@ class StatsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Stats'),
+        actions: const [
+          FeatureInfoButton(info: FeatureInfoContent.stats),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
+          const FeatureInfoCard(
+            info: FeatureInfoContent.stats,
+            padding: EdgeInsets.only(bottom: 12),
+          ),
           // Range picker
           _buildRangePicker(context, ref, range),
           const SizedBox(height: 12),

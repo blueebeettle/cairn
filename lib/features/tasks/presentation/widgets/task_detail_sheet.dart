@@ -272,9 +272,22 @@ class _TaskDetailSheetState extends ConsumerState<TaskDetailSheet> {
       }
     }
 
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    if (!mounted) return;
+
+    // Close the sheet first, then ask. Prompting while the sheet is still up
+    // stacks a dialog on top of it and leaves the task the user just created
+    // hidden behind both; it also means the sheet cannot close until the
+    // dialog is answered. Read the repository and grab the root navigator's
+    // context before popping, because this widget is disposed by then.
+    final settingsRepo = ref.read(settingsRepositoryProvider);
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    Navigator.of(context).pop();
+
+    if (!rootContext.mounted) return;
+    await NotificationPermissionHelper.ensureOnFirstItemCreated(
+      rootContext,
+      settingsRepo,
+    );
   }
 
   Future<void> _saveChanges() async {

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_root"
+    android:id="@+id/tasks_widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -8,76 +8,51 @@
          row checkboxes and buttons get the touch first; a listener on the
          root itself would swallow every child click. -->
     <ImageView
-        android:id="@+id/widget_bg"
+        android:id="@+id/tasks_widget_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:contentDescription="Open Cairn"
         android:background="@drawable/cairn_widget_background" />
 
     <LinearLayout
-        android:id="@+id/widget_content"
+        android:id="@+id/tasks_widget_content"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="14dp">
 
 
-    <!-- Header: Title & Counter -->
+    <!-- Header: Title & Due Count -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/tasks_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/widget_title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Today's Habits"
-                android:textColor="@color/widget_text_primary"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_date"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Today"
-                android:textColor="@color/widget_text_muted"
-                android:textSize="11sp" />
-        </LinearLayout>
+            android:text="Tasks"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/widget_progress_text"
+            android:id="@+id/tasks_summary"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="0 / 0"
+            android:text="All clear"
             android:textColor="@color/widget_accent"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Progress Bar -->
-    <ProgressBar
-        android:id="@+id/widget_progress_bar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="6dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"
-        android:max="100"
-        android:progress="0"
-        android:progressDrawable="@drawable/cairn_widget_progress" />
-
-    <!-- Habit 1 -->
+    <!-- Task 1 -->
     <LinearLayout
-        android:id="@+id/habit_row_1"
+        android:id="@+id/task_row_1"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
@@ -89,14 +64,15 @@
         android:visibility="gone">
 
         <ImageView
-            android:id="@+id/habit_1_check"
+            android:id="@+id/task_1_check"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
+            android:contentDescription="Complete task"
+            android:padding="11dp"
+            android:src="@drawable/cairn_check_square" />
 
         <TextView
-            android:id="@+id/habit_1_title"
+            android:id="@+id/task_1_title"
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_marginStart="2dp"
@@ -108,18 +84,19 @@
             android:textSize="12sp" />
 
         <TextView
-            android:id="@+id/habit_1_streak"
+            android:id="@+id/task_1_priority"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:textColor="@color/widget_accent"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Habit 2 -->
+    <!-- Task 2 -->
     <LinearLayout
-        android:id="@+id/habit_row_2"
+        android:id="@+id/task_row_2"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
@@ -131,14 +108,15 @@
         android:visibility="gone">
 
         <ImageView
-            android:id="@+id/habit_2_check"
+            android:id="@+id/task_2_check"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
+            android:contentDescription="Complete task"
+            android:padding="11dp"
+            android:src="@drawable/cairn_check_square" />
 
         <TextView
-            android:id="@+id/habit_2_title"
+            android:id="@+id/task_2_title"
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_marginStart="2dp"
@@ -150,18 +128,19 @@
             android:textSize="12sp" />
 
         <TextView
-            android:id="@+id/habit_2_streak"
+            android:id="@+id/task_2_priority"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:textColor="@color/widget_accent"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Habit 3 -->
+    <!-- Task 3 -->
     <LinearLayout
-        android:id="@+id/habit_row_3"
+        android:id="@+id/task_row_3"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
@@ -173,14 +152,15 @@
         android:visibility="gone">
 
         <ImageView
-            android:id="@+id/habit_3_check"
+            android:id="@+id/task_3_check"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
+            android:contentDescription="Complete task"
+            android:padding="11dp"
+            android:src="@drawable/cairn_check_square" />
 
         <TextView
-            android:id="@+id/habit_3_title"
+            android:id="@+id/task_3_title"
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_marginStart="2dp"
@@ -192,18 +172,19 @@
             android:textSize="12sp" />
 
         <TextView
-            android:id="@+id/habit_3_streak"
+            android:id="@+id/task_3_priority"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:textColor="@color/widget_accent"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Habit 4 -->
+    <!-- Task 4 -->
     <LinearLayout
-        android:id="@+id/habit_row_4"
+        android:id="@+id/task_row_4"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
@@ -215,14 +196,15 @@
         android:visibility="gone">
 
         <ImageView
-            android:id="@+id/habit_4_check"
+            android:id="@+id/task_4_check"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
+            android:contentDescription="Complete task"
+            android:padding="11dp"
+            android:src="@drawable/cairn_check_square" />
 
         <TextView
-            android:id="@+id/habit_4_title"
+            android:id="@+id/task_4_title"
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_marginStart="2dp"
@@ -234,18 +216,19 @@
             android:textSize="12sp" />
 
         <TextView
-            android:id="@+id/habit_4_streak"
+            android:id="@+id/task_4_priority"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:textColor="@color/widget_accent"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Habit 5 -->
+    <!-- Task 5 -->
     <LinearLayout
-        android:id="@+id/habit_row_5"
+        android:id="@+id/task_row_5"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
@@ -257,14 +240,15 @@
         android:visibility="gone">
 
         <ImageView
-            android:id="@+id/habit_5_check"
+            android:id="@+id/task_5_check"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
+            android:contentDescription="Complete task"
+            android:padding="11dp"
+            android:src="@drawable/cairn_check_square" />
 
         <TextView
-            android:id="@+id/habit_5_title"
+            android:id="@+id/task_5_title"
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_marginStart="2dp"
@@ -276,149 +260,24 @@
             android:textSize="12sp" />
 
         <TextView
-            android:id="@+id/habit_5_streak"
+            android:id="@+id/task_5_priority"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:textColor="@color/widget_accent"
             android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <!-- Habit 6 -->
-    <LinearLayout
-        android:id="@+id/habit_row_6"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="4dp"
-        android:background="@drawable/cairn_widget_item_bg"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="2dp"
-        android:paddingEnd="8dp"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/habit_6_check"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
-
-        <TextView
-            android:id="@+id/habit_6_title"
-            android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="2dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:textColor="@color/widget_text_primary"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/habit_6_streak"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:textColor="@color/widget_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <!-- Habit 7 -->
-    <LinearLayout
-        android:id="@+id/habit_row_7"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="4dp"
-        android:background="@drawable/cairn_widget_item_bg"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="2dp"
-        android:paddingEnd="8dp"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/habit_7_check"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
-
-        <TextView
-            android:id="@+id/habit_7_title"
-            android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="2dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:textColor="@color/widget_text_primary"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/habit_7_streak"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:textColor="@color/widget_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <!-- Habit 8 -->
-    <LinearLayout
-        android:id="@+id/habit_row_8"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="4dp"
-        android:background="@drawable/cairn_widget_item_bg"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="2dp"
-        android:paddingEnd="8dp"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/habit_8_check"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:contentDescription="Toggle habit"
-            android:padding="2dp" />
-
-        <TextView
-            android:id="@+id/habit_8_title"
-            android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="2dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:textColor="@color/widget_text_primary"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/habit_8_streak"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:textColor="@color/widget_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Empty State -->
     <TextView
-        android:id="@+id/widget_empty_text"
+        android:id="@+id/tasks_empty_text"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:gravity="center"
-        android:text="All habits completed! 🎉"
+        android:text="No tasks due today 🎉"
         android:textColor="@color/widget_text_muted"
         android:textSize="12sp"
         android:visibility="gone" />

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unchecked task box. Tasks leave the widget the moment they are completed,
+     so only the empty state is ever drawn here. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <corners android:radius="6dp" />
+    <stroke
+        android:width="2dp"
+        android:color="@color/widget_text_muted" />
+    <size
+        android:width="22dp"
+        android:height="22dp" />
+</shape>

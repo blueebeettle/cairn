@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/timer_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Background + "open the app" target. Lives BENEATH the content so
+         row checkboxes and buttons get the touch first; a listener on the
+         root itself would swallow every child click. -->
+    <ImageView
+        android:id="@+id/timer_widget_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="Open Cairn"
+        android:background="@drawable/cairn_widget_background" />
+
+    <LinearLayout
+        android:id="@+id/timer_widget_content"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+
+    <TextView
+        android:id="@+id/timer_status_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:letterSpacing="0.08"
+        android:text="FOCUS"
+        android:textColor="@color/widget_text_muted"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+
+    <!-- Two clocks, one visible at a time: the Chronometer runs itself while a
+         session is live (no updates needed from the app), the TextView shows a
+         frozen value when paused or idle. -->
+    <Chronometer
+        android:id="@+id/timer_chronometer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/timer_time_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="25:00"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <!-- Action row: which buttons show is driven by timer_status. -->
+    <LinearLayout
+        android:id="@+id/timer_button_row"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/timer_start_button"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/cairn_widget_button_accent"
+            android:gravity="center"
+            android:minWidth="96dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:text="Start"
+            android:textColor="@color/widget_on_accent"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/timer_pause_button"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/cairn_widget_button_accent"
+            android:gravity="center"
+            android:minWidth="80dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="Pause"
+            android:textColor="@color/widget_on_accent"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/timer_resume_button"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/cairn_widget_button_accent"
+            android:gravity="center"
+            android:minWidth="80dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="Resume"
+            android:textColor="@color/widget_on_accent"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/timer_stop_button"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/cairn_widget_button_outline"
+            android:gravity="center"
+            android:minWidth="80dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="Stop"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>

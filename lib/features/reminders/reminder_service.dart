@@ -225,9 +225,16 @@ class ReminderService {
               t.dueAt.isNotNull()))
         .get();
 
-    for (final task in openTasks) {
-      await scheduleFor(task);
-    }
+    // Scheduled in parallel rather than one at a time — with dozens of open
+    // dated tasks this loop was the single biggest contributor to startup
+    // lag. One bad row must not stop every other task from reminding.
+    await Future.wait(openTasks.map((task) async {
+      try {
+        await scheduleFor(task);
+      } catch (e) {
+        debugPrint('Task reminder reconcile failed for ${task.id}: $e');
+      }
+    }));
 
     await reconcileHabits();
     await reconcileDigest();
@@ -400,7 +407,8 @@ class ReminderService {
   /// habit was archived cannot keep firing.
   Future<void> reconcileHabits() async {
     final habits = await db.select(db.habits).get();
-    for (final habit in habits) {
+    // Scheduled in parallel rather than one at a time — see reconcileAll.
+    await Future.wait(habits.map((habit) async {
       try {
         final live = habit.status == HabitStatuses.active && habit.deletedAt == null;
         if (live) {
@@ -412,7 +420,7 @@ class ReminderService {
         // One bad row must not stop every other habit from reminding.
         debugPrint('Habit reminder reconcile failed for ${habit.id}: $e');
       }
-    }
+    }));
   }
 
   // ───────────────────────────────────────────────────────────────── digest

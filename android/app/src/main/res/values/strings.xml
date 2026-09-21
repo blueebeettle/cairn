@@ -4,4 +4,8 @@
     <string name="habits_widget_description">Interactive daily habit tracker with one-tap check-offs</string>
     <string name="today_widget_name">Today Summary</string>
     <string name="today_widget_description">Glanceable summary of focus time, habits, and tasks</string>
+    <string name="tasks_widget_name">Today\'s Tasks</string>
+    <string name="tasks_widget_description">Today\'s open tasks by priority, with one-tap completion</string>
+    <string name="timer_widget_name">Focus Timer</string>
+    <string name="timer_widget_description">Start, pause, resume, and stop a focus session from the home screen</string>
 </resources>

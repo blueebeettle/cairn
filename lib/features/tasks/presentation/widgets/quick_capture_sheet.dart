@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/notifications/notification_permission_helper.dart';
 import '../../../../core/time/time_service.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/providers/database_provider.dart';
@@ -215,9 +216,18 @@ class _QuickCaptureSheetState extends ConsumerState<QuickCaptureSheet> {
         tagNames: _parsed.tags,
       );
 
-      if (mounted) {
-        Navigator.of(context).pop(task);
-      }
+      if (!mounted) return;
+
+      // Pop first, prompt after — see TaskDetailSheet._createTask.
+      final settingsRepo = ref.read(settingsRepositoryProvider);
+      final rootContext = Navigator.of(context, rootNavigator: true).context;
+      Navigator.of(context).pop(task);
+
+      if (!rootContext.mounted) return;
+      await NotificationPermissionHelper.ensureOnFirstItemCreated(
+        rootContext,
+        settingsRepo,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

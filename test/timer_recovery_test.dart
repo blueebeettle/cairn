@@ -316,4 +316,99 @@ void main() {
       controller.dispose();
     });
   });
+
+  group('reconcileOnResume — widget-driven state changes (§3.3)', () {
+    test('idle in memory and no session in the DB leaves the user\'s picks alone', () async {
+      final controller = createController();
+      // The user opened the Timer screen, chose Flow and a custom length, but
+      // has not started anything yet. A plain app-switch must not reset that.
+      controller.setMode(TimerMode.flow);
+      controller.setPlannedDuration(3000);
+
+      await controller.reconcileOnResume();
+
+      expect(controller.state.isIdle, isTrue);
+      expect(controller.state.mode, equals(TimerMode.flow));
+      expect(controller.state.plannedDurationS, equals(3000));
+
+      controller.dispose();
+    });
+
+    test('idle in memory but a session in the DB recovers it (started from the widget)', () async {
+      final controller = createController();
+      expect(controller.state.isIdle, isTrue);
+
+      // The widget's background isolate started a session while the app sat
+      // on another tab.
+      final sessionId = await timerRepo.createFocusSession(
+        mode: 'pomodoro',
+        plannedDurationS: 1500,
+        startedAt: t0,
+        localDate: timeService.computeLocalDate(t0),
+        tzOffsetMin: timeService.currentTzOffsetMin(t0),
+        tzId: timeService.currentTzId(),
+      );
+      await timerRepo.persistTimerState(
+        sessionId: sessionId,
+        startedAtUtc: t0,
+        plannedDurationS: 1500,
+        mode: 'pomodoro',
+        pausedAccumulatedS: 0,
+        pausedAtUtc: null,
+      );
+
+      currentUtcMs = t0 + (5 * 60 * 1000);
+      await controller.reconcileOnResume();
+
+      expect(controller.state.isRunning, isTrue);
+      expect(controller.state.sessionId, equals(sessionId));
+      expect(controller.state.computeRemainingSeconds(currentUtcMs), equals(20 * 60));
+
+      controller.dispose();
+    });
+
+    test('running in memory but paused in the DB picks up the widget pause', () async {
+      final controller = createController();
+      await controller.startSession(plannedDurationS: 1500);
+      expect(controller.state.isRunning, isTrue);
+
+      // Widget Pause at t+5m writes timer_states directly.
+      currentUtcMs = t0 + (5 * 60 * 1000);
+      await timerRepo.persistTimerState(
+        sessionId: controller.state.sessionId,
+        startedAtUtc: t0,
+        plannedDurationS: 1500,
+        mode: 'pomodoro',
+        pausedAccumulatedS: 0,
+        pausedAtUtc: currentUtcMs,
+      );
+
+      currentUtcMs = t0 + (6 * 60 * 1000);
+      await controller.reconcileOnResume();
+
+      expect(controller.state.isPaused, isTrue);
+      expect(controller.state.pausedAtUtc, equals(t0 + (5 * 60 * 1000)));
+      // Clock kept moving while paused, but remaining is frozen at 20m.
+      expect(controller.state.computeRemainingSeconds(currentUtcMs), equals(20 * 60));
+
+      controller.dispose();
+    });
+
+    test('running in memory but cleared in the DB goes idle (widget Stop)', () async {
+      final controller = createController();
+      await controller.startSession(plannedDurationS: 1500);
+      expect(controller.state.isRunning, isTrue);
+
+      // Widget Stop abandons and clears timer_states.
+      currentUtcMs = t0 + (3 * 60 * 1000);
+      await timerRepo.clearTimerState();
+
+      await controller.reconcileOnResume();
+
+      expect(controller.state.isIdle, isTrue);
+      expect(controller.state.sessionId, isNull);
+
+      controller.dispose();
+    });
+  });
 }

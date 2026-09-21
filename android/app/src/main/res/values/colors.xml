@@ -1,15 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default (light) resources. The dark equivalents live in
+  values-night/colors.xml and Android swaps between the two automatically
+  when the device theme changes, including for app widgets: the launcher
+  renders RemoteViews against this app's resources using the current UI
+  mode, so a widget follows the system light/dark setting with no code and
+  no per-widget setting to keep in sync.
+
+  Every widget colour must therefore exist in BOTH files under the same
+  name. ic_launcher_background deliberately does not — the launcher icon
+  keeps its brand purple in either theme, and names missing from the night
+  file simply fall back to this one.
+-->
 <resources>
     <color name="ic_launcher_background">#590D86</color>
-    <color name="widget_background">#1F1728</color>
-    <color name="widget_surface">#2A2035</color>
-    <color name="widget_surface_subtle">#251C30</color>
-    <color name="widget_accent">#C08FE8</color>
+
+    <!-- Surfaces: the app's cream ground, lightest card on top. -->
+    <color name="widget_background">#FAF3F0</color>
+    <color name="widget_surface">#FFFFFF</color>
+    <color name="widget_surface_subtle">#F4EAE5</color>
+
+    <!-- Accent fills. On a light ground the brand purple is the accent and
+         text on top of it is white (11.50:1); in dark mode that inverts to a
+         pale lavender fill with near-black text. -->
+    <color name="widget_accent">#590D86</color>
     <color name="widget_accent_brand">#590D86</color>
-    <color name="widget_text_primary">#F3EBF0</color>
-    <color name="widget_text_secondary">#C4B6CE</color>
-    <color name="widget_text_muted">#9385A0</color>
-    <color name="widget_border">#3A2E47</color>
-    <color name="widget_progress_track">#352943</color>
-    <color name="widget_check_done">#81C784</color>
+    <color name="widget_on_accent">#FFFFFF</color>
+
+    <!-- Text. Ratios against widget_background:
+         primary 14.95:1, secondary 8.97:1, muted 5.14:1. -->
+    <color name="widget_text_primary">#241C2E</color>
+    <color name="widget_text_secondary">#4A3F55</color>
+    <color name="widget_text_muted">#6E6379</color>
+
+    <color name="widget_border">#E3D8DF</color>
+    <color name="widget_progress_track">#E6DCE4</color>
+    <!-- Darker than the dark-theme green so it still reads on cream (4.67:1). -->
+    <color name="widget_check_done">#2E7D32</color>
 </resources>

@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import '../../data/repositories/settings_repository.dart';
+
 /// Helper for requesting notification permission with a pre-dialog per PROMPT-reminders.md §Part C.
 class NotificationPermissionHelper {
   static bool _hasPromptedThisSession = false;
@@ -87,5 +89,42 @@ class NotificationPermissionHelper {
     }
 
     return true;
+  }
+
+  /// Settings key recording that the "you just made your first thing" prompt
+  /// has already been shown, so it never reappears on later creations.
+  static const firstItemPromptedKey = 'notif_first_item_prompted';
+
+  /// Asks for notification permission the first time the user creates a task
+  /// or a habit.
+  ///
+  /// Reminders are not an opt-in extra the user goes looking for: a new dated
+  /// task is given the default reminder offset the moment it is created, and
+  /// a habit with a reminder time schedules one straight away. Waiting until
+  /// someone opens the reminder editor meant that first reminder could be
+  /// scheduled against a permission nobody had asked for, and it would simply
+  /// never fire. Asking once, right after there is finally something worth
+  /// being reminded about, is both the earliest useful moment and the easiest
+  /// one to say yes to.
+  ///
+  /// Only ever prompts once — the flag is persisted, so declining is
+  /// remembered across restarts and this never becomes a nag. Reminder
+  /// editors and the timer still call [ensureNotificationPermission]
+  /// directly, which is the "and when necessary" half.
+  static Future<void> ensureOnFirstItemCreated(
+    BuildContext context,
+    SettingsRepository settingsRepo,
+  ) async {
+    if (kIsWeb) return;
+    try {
+      final alreadyPrompted = await settingsRepo.getInt(firstItemPromptedKey);
+      if (alreadyPrompted == 1) return;
+      await settingsRepo.setInt(firstItemPromptedKey, 1);
+    } catch (_) {
+      // A settings read/write failure must never block creating a task.
+      return;
+    }
+    if (!context.mounted) return;
+    await ensureNotificationPermission(context);
   }
 }

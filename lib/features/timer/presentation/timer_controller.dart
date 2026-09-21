@@ -140,10 +140,35 @@ class TimerController extends StateNotifier<TimerState> {
     }
   }
 
+  /// Reconciles in-memory state against the database on app resume, without
+  /// discarding an idle user's not-yet-started mode/duration picks.
+  ///
+  /// The widget's background isolate writes `timer_states` directly, so a
+  /// session can start, pause, resume or stop while this controller is alive
+  /// but backgrounded — leaving memory stale. Only re-run full recovery when
+  /// there is actually something to reconcile: either memory already reflects
+  /// an in-progress session (always safe to re-derive from the DB, which is
+  /// authoritative), or the DB now shows a session memory does not know about.
+  /// If both sides agree nothing is active, do nothing — so a user who picked
+  /// Flow mode and a custom duration on the idle Timer screen does not lose
+  /// that just by switching tabs and back.
+  Future<void> reconcileOnResume() async {
+    final row = await _timerRepo.loadTimerState();
+    final dbHasActiveSession = row != null && row.startedAtUtc != null;
+    final memoryIsIdle = state.isIdle || state.isAbandoned;
+    if (!memoryIsIdle || dbHasActiveSession) {
+      await initialize();
+    }
+  }
+
   /// Cold-start recovery per SPEC.md §3.3.
   Future<void> initialize() async {
     final row = await _timerRepo.loadTimerState();
     if (row == null || row.startedAtUtc == null) {
+      // Reachable mid-life now that a widget Stop can clear the row out from
+      // under a live controller, so drop the ticker rather than leaving it
+      // spinning against idle state.
+      _stopTicker();
       state = TimerState(
         plannedDurationS: _getSessionLengthSeconds(),
         breakDurationS: _getBreakLengthSeconds(),
