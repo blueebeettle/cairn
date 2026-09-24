@@ -303,7 +303,15 @@ class TaskParser {
     if (month != null && day != null && day >= 1 && day <= 31) {
       final today = timeService.todayLocalDate();
       final currentYear = int.parse(today.split('-')[0]);
-      return TimeService.formatIsoDate(currentYear, month, day);
+      final thisYear = TimeService.formatIsoDate(currentYear, month, day);
+      // Roll forward when the date has already gone by, the same way the
+      // weekday branch above rolls to next week rather than naming a day in
+      // the past. Typing "jan 5" in December means next January.
+      //
+      // Compared as plain strings: ISO dates sort chronologically, and both
+      // sides are already normalised by `formatIsoDate`/`todayLocalDate`.
+      if (thisYear.compareTo(today) >= 0) return thisYear;
+      return TimeService.formatIsoDate(currentYear + 1, month, day);
     }
 
     return null;

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:habit_tracker/data/database/app_database.dart';
 import 'package:habit_tracker/data/providers/database_provider.dart';
 import 'package:habit_tracker/data/repositories/stats_repository.dart';
+import 'package:habit_tracker/core/widgets/focus_ring.dart';
 import 'package:habit_tracker/features/today/presentation/today_screen.dart';
 import 'package:habit_tracker/theme/app_theme.dart';
 
@@ -18,6 +19,8 @@ void main() {
     List<Event>? events,
     int? dailyGoal,
     String? selectedDate,
+    ThemeData Function()? buildTheme,
+    List<Override> extraOverrides = const [],
   }) {
     return ProviderScope(
       overrides: [
@@ -43,9 +46,10 @@ void main() {
           ),
         if (selectedDate != null)
           selectedDateProvider.overrideWith((ref) => selectedDate),
+        ...extraOverrides,
       ],
       child: MaterialApp(
-        theme: AppTheme.light,
+        theme: buildTheme == null ? AppTheme.light : buildTheme(),
         home: const TodayScreen(),
       ),
     );
@@ -139,17 +143,33 @@ void main() {
       await tester.pump();
 
       // Initial state is today
+      // The sessions list is the last section on the screen; scroll to it.
+      await tester.scrollUntilVisible(
+        find.text('No sessions yet today.'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(
         find.text('No sessions yet today.', skipOffstage: false),
         findsOneWidget,
       );
 
-      // Tap previous day arrow
+      // Tap previous day arrow — the date row scrolled out of view above.
+      await tester.scrollUntilVisible(
+        find.byTooltip('Previous day'),
+        -150,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.byTooltip('Previous day'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
       // Empty state explicitly mentions which date is empty (never showing ISO format)
+      await tester.scrollUntilVisible(
+        find.textContaining('No sessions on '),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(
         find.textContaining('No sessions on ', skipOffstage: false),
         findsOneWidget,
@@ -160,10 +180,190 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
+      // The sessions list is the last section on the screen; scroll to it.
+      await tester.scrollUntilVisible(
+        find.text('No sessions yet today.'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(
         find.text('No sessions yet today.', skipOffstage: false),
         findsOneWidget,
       );
+    });
+  });
+
+  // The goal ring used to float bare on the page background between two
+  // cards. These pin it inside the card system: the eyebrow, the shadowed
+  // 22-radius surface, and one tap target over the whole thing.
+  group('TodayScreen — Focus card', () {
+    const stats = FocusStats(
+      focusMinutesToday: 28,
+      currentStreakDays: 2,
+      longestStreakDays: 9,
+      dailyGoalMinutes: 45,
+    );
+
+    /// The focus card: the only 22-radius filled Container on the screen that
+    /// holds the ring. Matched on radius and fill rather than a shadow — the
+    /// card system is flat.
+    Finder focusCard() => find.ancestor(
+          of: find.byType(FocusRing),
+          matching: find.byWidgetPredicate((w) {
+            if (w is! Container) return false;
+            final decoration = w.decoration;
+            if (decoration is! BoxDecoration) return false;
+            return decoration.color != null &&
+                decoration.borderRadius == BorderRadius.circular(22);
+          }),
+        );
+
+    final themes = <String, ThemeData Function()>{
+      'light': () => AppTheme.light,
+      'dark': () => AppTheme.dark,
+    };
+
+    for (final entry in themes.entries) {
+      final themeName = entry.key;
+      final buildTheme = entry.value;
+
+      testWidgets('($themeName) the ring sits in a filled 22-radius card',
+          (tester) async {
+        await tester.pumpWidget(
+          createTestWidget(stats: stats, buildTheme: buildTheme),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(focusCard(), findsOneWidget);
+
+        // Eyebrow, ring figure and caption all live inside it.
+        expect(
+          find.descendant(of: focusCard(), matching: find.text('FOCUS')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: focusCard(), matching: find.text('28m')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+              of: focusCard(), matching: find.text('Goal: 45 min')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+              of: focusCard(), matching: find.text('Ready to focus')),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('($themeName) the card fill follows the theme',
+          (tester) async {
+        await tester.pumpWidget(
+          createTestWidget(stats: stats, buildTheme: buildTheme),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        final decoration =
+            tester.widget<Container>(focusCard()).decoration! as BoxDecoration;
+        final colors =
+            Theme.of(tester.element(find.byType(FocusRing))).colorScheme;
+        expect(
+          decoration.color,
+          equals(colors.brightness == Brightness.dark
+              ? colors.surfaceContainer
+              : colors.surfaceContainerLowest),
+        );
+      });
+    }
+
+    testWidgets('tapping the card padding — not the ring — opens the Timer tab',
+        (tester) async {
+      late ProviderContainer container;
+      await tester.pumpWidget(
+        createTestWidget(
+          stats: stats,
+          extraOverrides: [navigationIndexProvider.overrideWith((ref) => 0)],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      container = ProviderScope.containerOf(
+        tester.element(find.byType(TodayScreen)),
+      );
+      expect(container.read(navigationIndexProvider), equals(0));
+
+      // The eyebrow is inside the card but outside the ring's own hit area,
+      // so this only passes because of the whole-card InkWell.
+      await tester.tap(find.text('FOCUS'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(navigationIndexProvider), equals(1));
+    });
+
+    testWidgets('tapping the ring still opens the Timer tab', (tester) async {
+      await tester.pumpWidget(
+        createTestWidget(
+          stats: stats,
+          extraOverrides: [navigationIndexProvider.overrideWith((ref) => 0)],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TodayScreen)),
+      );
+      await tester.tap(find.text('28m'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(navigationIndexProvider), equals(1));
+    });
+
+    testWidgets('renders at zero minutes with an empty ring', (tester) async {
+      await tester.pumpWidget(
+        createTestWidget(
+          stats: const FocusStats(
+            focusMinutesToday: 0,
+            currentStreakDays: 0,
+            longestStreakDays: 0,
+            dailyGoalMinutes: 45,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(focusCard(), findsOneWidget);
+      expect(
+        find.descendant(of: focusCard(), matching: find.text('0m')),
+        findsOneWidget,
+      );
+      expect(tester.widget<FocusRing>(find.byType(FocusRing)).progress,
+          equals(0.0));
+    });
+
+    testWidgets('renders over goal with a full ring, not past it',
+        (tester) async {
+      await tester.pumpWidget(
+        createTestWidget(
+          stats: const FocusStats(
+            focusMinutesToday: 90,
+            currentStreakDays: 1,
+            longestStreakDays: 1,
+            dailyGoalMinutes: 45,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(focusCard(), findsOneWidget);
+      expect(tester.widget<FocusRing>(find.byType(FocusRing)).progress,
+          equals(1.0));
     });
   });
 }

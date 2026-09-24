@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../../core/constants/event_types.dart';
+import '../../core/habits/milestone_thresholds.dart';
 import '../../core/time/time_service.dart';
 import '../database/app_database.dart';
 
@@ -222,6 +223,56 @@ class StatsRepository {
       if (run > best) best = run;
     }
     return best;
+  }
+
+  /// The dates on which the daily-focus streak landed exactly on a
+  /// `MilestoneThresholds` value — 7, 14, 30, 60, 100, then every hundred.
+  ///
+  /// Walks the met days in order exactly as [longestStreak] does, but instead
+  /// of tracking the best run it records the date each run *reaches* a
+  /// threshold. Only the day the streak crosses the number is marked: a run of
+  /// 45 days marks day 7, 14 and 30, not the 42 days in between.
+  ///
+  /// Known limitation, shared with the heatmap this feeds: the run counter can
+  /// only see the days present in [secondsByDate]. If that map starts in the
+  /// middle of a real streak — the caller passing a windowed query rather than
+  /// all history — the first met day restarts the count at 1, so a streak that
+  /// had already passed 30 before the window opens will be re-marked as it
+  /// re-crosses each threshold inside it. Callers that care pass full history;
+  /// [watchMilestoneDates] does.
+  static Set<String> milestoneDates(
+    Map<String, int> secondsByDate,
+    int goalMinutes,
+  ) {
+    final metDates = secondsByDate.keys
+        .where((d) => _met(secondsByDate, d, goalMinutes))
+        .toList()
+      ..sort(); // YYYY-MM-DD sorts lexicographically == chronologically
+
+    final out = <String>{};
+    var run = 0;
+    String? prev;
+    for (final date in metDates) {
+      run = (prev != null && TimeService.daysBetween(prev, date) == 1)
+          ? run + 1
+          : 1;
+      if (MilestoneThresholds.reached(run)) out.add(date);
+      prev = date;
+    }
+    return out;
+  }
+
+  /// [milestoneDates] over all history, recomputed whenever sessions change.
+  ///
+  /// Reads the same all-history query [watchFocusStats] does, so the run
+  /// counter starts where the user's data actually starts rather than at the
+  /// edge of a display window.
+  Stream<Set<String>> watchMilestoneDates({
+    int dailyGoalMinutes = FocusStats.defaultDailyGoalMinutes,
+  }) {
+    return _completedSecondsByDateQuery()
+        .watch()
+        .map((rows) => milestoneDates(_foldRows(rows), dailyGoalMinutes));
   }
 
   /// SPEC.md §4.10 — Throughput balance:

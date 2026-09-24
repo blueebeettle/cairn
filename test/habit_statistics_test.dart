@@ -248,4 +248,157 @@ void main() {
       expect(thresholds.provisional, isTrue);
     });
   });
+
+  group('habitFreezeCountIn', () {
+    test('counts neutral days across every habit inside the period', () {
+      // h1 has one excused rest, on Fri 09-04. h2 has none.
+      expect(habitFreezeCountIn([h1, h2], period), equals(1));
+    });
+
+    test('a day outside the period is not counted', () {
+      const before = StatsPeriod(start: '2026-09-01', end: '2026-09-03');
+      expect(habitFreezeCountIn([h1, h2], before), equals(0));
+    });
+
+    test('pools across habits rather than stopping at the first', () {
+      final other = HabitStatsInput(
+        habitId: 'h3',
+        title: 'Stretch',
+        colorIndex: 2,
+        iconName: 'stretch',
+        currentStreak: 0,
+        longestStreak: 0,
+        outcomes: const {
+          '2026-09-02': HabitDayOutcome.neutral,
+          '2026-09-04': HabitDayOutcome.neutral,
+        },
+        entries: const {},
+      );
+      expect(habitFreezeCountIn([h1, h2, other], period), equals(3));
+    });
+
+    test('done, missed and pending days are not freezes', () {
+      expect(habitFreezeCountIn([h2], period), equals(0));
+    });
+
+    test('no habits is zero, not an error', () {
+      expect(habitFreezeCountIn(const [], period), equals(0));
+    });
+  });
+
+  group('buildWeeklyRecap', () {
+    // The fixture week: Mon 2026-08-31 .. Sun 2026-09-06, with "today" on
+    // Thu 2026-09-03 so Fri/Sat/Sun are still to come.
+    const weekStart = '2026-08-31';
+    const today = '2026-09-03';
+
+    WeeklyRecap recapOf(List<HabitStatsInput> habits) => buildWeeklyRecap(
+          habits: habits,
+          todayLocalDate: today,
+          weekStartLocalDate: weekStart,
+        );
+
+    test('spans Monday to Sunday', () {
+      final recap = recapOf([h1, h2]);
+      expect(recap.weekStart, equals('2026-08-31'));
+      expect(recap.weekEnd, equals('2026-09-06'));
+      expect(recap.days, hasLength(7));
+      expect(recap.days.first.date, equals('2026-08-31'));
+      expect(recap.days.last.date, equals('2026-09-06'));
+    });
+
+    test('marks today, and everything after it as still to come', () {
+      final recap = recapOf([h1, h2]);
+      final todayDays = recap.days.where((d) => d.isToday).toList();
+      expect(todayDays, hasLength(1));
+      expect(todayDays.single.date, equals(today));
+
+      // Mon-Wed happened, Thu is today, Fri-Sun are future.
+      expect(recap.days.map((d) => d.isFuture).toList(),
+          equals([false, false, false, false, true, true, true]));
+    });
+
+    test('a future day carries no rate, so it cannot read as a miss', () {
+      final recap = recapOf([h1, h2]);
+      for (final day in recap.days.where((d) => d.isFuture)) {
+        expect(day.rate, isNull, reason: '${day.date} has not happened');
+      }
+    });
+
+    test('per-day rates are pooled across habits', () {
+      final recap = recapOf([h1, h2]);
+      // Tue 09-01: h1 done, h2 done -> 2/2. Wed 09-02: h1 missed, h2 done
+      // -> 1/2. Thu 09-03: h1 done, h2 missed -> 1/2.
+      expect(recap.days[1].rate, equals(1.0));
+      expect(recap.days[2].rate, closeTo(0.5, 1e-9));
+      expect(recap.days[3].rate, closeTo(0.5, 1e-9));
+      // Mon 08-31 has nothing scheduled at all.
+      expect(recap.days[0].rate, isNull);
+    });
+
+    test('the weekly rate excludes excused and pending days', () {
+      final recap = recapOf([h1, h2]);
+      // Scorable this week: 09-01 (done, done), 09-02 (missed, done),
+      // 09-03 (done, missed) = 4 done of 6. 09-04's neutral and future, and
+      // 09-05's pending, are all excluded.
+      expect(recap.completionRate, closeTo(4 / 6, 1e-9));
+    });
+
+    test('a first-ever week has no prior rate to compare against', () {
+      final recap = recapOf([h1, h2]);
+      expect(recap.priorCompletionRate, isNull);
+      expect(recap.rateDelta, isNull,
+          reason: 'no baseline should be invented from an absent week');
+    });
+
+    test('a week with history reports a real delta', () {
+      final withHistory = HabitStatsInput(
+        habitId: 'h4',
+        title: 'Journal',
+        colorIndex: 0,
+        iconName: 'book',
+        currentStreak: 3,
+        longestStreak: 9,
+        outcomes: const {
+          // Last week (08-24..08-30): 1 of 2.
+          '2026-08-24': HabitDayOutcome.done,
+          '2026-08-25': HabitDayOutcome.missed,
+          // This week: 2 of 2.
+          '2026-09-01': HabitDayOutcome.done,
+          '2026-09-02': HabitDayOutcome.done,
+        },
+        entries: const {},
+      );
+      final recap = recapOf([withHistory]);
+      expect(recap.priorCompletionRate, closeTo(0.5, 1e-9));
+      expect(recap.completionRate, equals(1.0));
+      expect(recap.rateDelta, closeTo(0.5, 1e-9));
+    });
+
+    test('best streak is the highest current streak, not re-sliced to the week',
+        () {
+      // h1's current streak is 5 and h2's is 2, both whole-history numbers
+      // that a seven-day window could not produce on its own.
+      expect(recapOf([h1, h2]).bestStreak, equals(5));
+    });
+
+    test('habits kept sums check-offs inside the week only', () {
+      final recap = recapOf([h1, h2]);
+      // 09-01: 1 + 2, 09-02: 0 + 1, 09-03: 1 + 0, 09-04..05: 0.
+      expect(recap.habitsKept, equals(5));
+    });
+
+    test('freezes used is week-scoped, not month-scoped', () {
+      expect(recapOf([h1, h2]).freezesUsed, equals(1)); // h1's 09-04 rest
+    });
+
+    test('no habits has no data, so the card can gate on it', () {
+      final recap = recapOf(const []);
+      expect(recap.hasAnyData, isFalse);
+      expect(recap.activeHabitCount, equals(0));
+      expect(recap.completionRate, isNull);
+      expect(recap.bestStreak, equals(0));
+      expect(recap.days, hasLength(7));
+    });
+  });
 }

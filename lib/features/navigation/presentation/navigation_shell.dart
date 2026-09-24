@@ -7,8 +7,10 @@ import 'package:home_widget/home_widget.dart';
 
 import '../../../data/providers/database_provider.dart';
 import '../../../data/providers/habit_providers.dart';
+import '../../habits/domain/milestone_celebration_controller.dart';
 import '../../habits/presentation/habit_detail_screen.dart';
 import '../../habits/presentation/habits_screen.dart';
+import '../../habits/presentation/milestone_celebration_screen.dart';
 import '../../reminders/reminder_service.dart';
 import '../../stats/presentation/stats_screen.dart';
 import '../../tasks/presentation/tasks_screen.dart';
@@ -135,12 +137,31 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
     HabitDetailScreen.open(context, habitId);
   }
 
+  /// Opens §4's full-screen celebration for a milestone
+  /// `MilestoneCelebrationController` just detected, the same
+  /// consume-then-navigate shape as [_openPendingHabit] above.
+  void _openMilestoneCelebration(PendingMilestoneCelebration pending) {
+    ref.read(milestoneCelebrationControllerProvider.notifier).consume();
+    if (!mounted) return;
+    MilestoneCelebrationScreen.open(
+      context,
+      habitId: pending.habitId,
+      streak: pending.streak,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentIndex = ref.watch(navigationIndexProvider);
     ref.listen<String?>(pendingHabitDetailProvider, (_, next) {
       if (next != null) _openPendingHabit();
     });
+    ref.listen<PendingMilestoneCelebration?>(
+      milestoneCelebrationControllerProvider,
+      (_, next) {
+        if (next != null) _openMilestoneCelebration(next);
+      },
+    );
 
     // Automatically synchronize home screen widgets on data updates
     ref.listen(habitSnapshotsProvider, (_, next) {
@@ -179,7 +200,7 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
           NavigationDestination(
             icon: Icon(Icons.timer_outlined),
             selectedIcon: Icon(Icons.timer_rounded),
-            label: 'Timer',
+            label: 'Focus',
           ),
           NavigationDestination(
             icon: Icon(Icons.check_circle_outline_rounded),

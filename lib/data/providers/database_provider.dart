@@ -523,6 +523,96 @@ final digestTimesMinProvider =
   return DigestTimesMinNotifier(settingsRepo);
 });
 
+/// StateNotifier for whether the once-daily habit check-in fires
+/// (`habit_digest_enabled`, default off).
+///
+/// Off by default for the same reason [DigestEnabledNotifier] is: a fresh
+/// install sends no notification nobody asked for. Read by
+/// `ReminderService.reconcileHabitDigest`.
+class HabitDigestEnabledNotifier extends StateNotifier<bool> {
+  HabitDigestEnabledNotifier(this._settingsRepo, [bool initial = false])
+      : super(initial) {
+    _load();
+  }
+
+  final SettingsRepository _settingsRepo;
+  bool _userModified = false;
+
+  Future<void> _load() async {
+    try {
+      final saved = await _settingsRepo.getBool('habit_digest_enabled');
+      if (!_userModified && saved != null && mounted) {
+        super.state = saved;
+      }
+    } catch (_) {}
+  }
+
+  @override
+  set state(bool value) {
+    _userModified = true;
+    super.state = value;
+    _settingsRepo.setBool('habit_digest_enabled', value);
+  }
+
+  void setEnabled(bool value) {
+    state = value;
+  }
+}
+
+final habitDigestEnabledProvider =
+    StateNotifierProvider<HabitDigestEnabledNotifier, bool>((ref) {
+  final settingsRepo = ref.watch(settingsRepositoryProvider);
+  return HabitDigestEnabledNotifier(settingsRepo);
+});
+
+/// StateNotifier for the habit check-in's time of day, in minutes from
+/// midnight (`habit_digest_time_min`, default 20:00).
+///
+/// One time, not a list like [DigestTimesMinNotifier]: the check-in is a
+/// single daily prompt, and `reconcileHabitDigest` reads exactly one value.
+class HabitDigestTimeMinNotifier extends StateNotifier<int> {
+  HabitDigestTimeMinNotifier(this._settingsRepo, [int? initial])
+      : super(_clean(initial ?? ReminderService.defaultHabitDigestTimeMin)) {
+    _load();
+  }
+
+  final SettingsRepository _settingsRepo;
+  bool _userModified = false;
+
+  /// Anything outside a day falls back to the default rather than scheduling
+  /// a notification at hour 47 — same defensive shape as
+  /// [DigestTimesMinNotifier._clean].
+  static int _clean(int value) =>
+      (value >= 0 && value < 24 * 60) ? value : ReminderService.defaultHabitDigestTimeMin;
+
+  Future<void> _load() async {
+    try {
+      final saved = await _settingsRepo.getInt('habit_digest_time_min');
+      if (!_userModified && saved != null && mounted) {
+        super.state = _clean(saved);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  set state(int value) {
+    _userModified = true;
+    final cleaned = _clean(value);
+    super.state = cleaned;
+    _settingsRepo.setInt('habit_digest_time_min', cleaned);
+  }
+
+  void setTime(int value) {
+    state = value;
+  }
+}
+
+final habitDigestTimeMinProvider =
+    StateNotifierProvider<HabitDigestTimeMinNotifier, int>((ref) {
+  final settingsRepo = ref.watch(settingsRepositoryProvider);
+  return HabitDigestTimeMinNotifier(settingsRepo);
+});
+
 /// The device's IANA zone id, resolved once at startup in main() (SPEC §1.2).
 /// Empty when the platform would not say.
 final deviceTzIdProvider = Provider<String>((ref) => '');

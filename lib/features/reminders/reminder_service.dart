@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -15,6 +17,7 @@ import '../../data/repositories/events_repository.dart';
 import '../../data/repositories/habits_repository.dart';
 import '../../data/repositories/reminder_config_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import 'habit_digest_copy.dart';
 
 /// Service managing scheduled task and habit reminder notifications per
 /// PROMPT-reminders.md and SPEC.md §10.4/§11.
@@ -25,10 +28,13 @@ import '../../data/repositories/settings_repository.dart';
 /// - Task countdown reminders: one per live `task_reminder_offsets` row, id
 ///   allocated from the shared counter (§5) and stored on the row.
 /// - Habit reminders: one per live `habit_reminder_times` row, same counter.
-/// - The daily digest: at most [ReminderConfigRepository.maxRemindersPerItem]
-///   plus one notifications at fixed ids 1..6 — a reserved low band, below
-///   where the shared counter starts (1000), so there is nothing to persist:
-///   the Nth configured digest time is always id `1 + N`.
+/// - The daily task digest: at most
+///   [ReminderConfigRepository.maxRemindersPerItem] plus one notifications at
+///   fixed ids 1..6 — a reserved low band, below where the shared counter
+///   starts (1000), so there is nothing to persist: the Nth configured digest
+///   time is always id `1 + N`.
+/// - The daily habit digest: one notification at fixed id 7, for the same
+///   reason.
 class ReminderService {
   ReminderService({
     required this.db,
@@ -40,7 +46,10 @@ class ReminderService {
     this.onNotificationTapped,
     this.onHabitNotificationTapped,
     this.onDigestTapped,
-  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+    this.onHabitDigestTapped,
+    Random? random,
+  })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
+        _random = random ?? Random();
 
   final AppDatabase db;
   final SettingsRepository settingsRepo;
@@ -49,6 +58,12 @@ class ReminderService {
   final void Function(String taskId)? onNotificationTapped;
   final void Function(String habitId)? onHabitNotificationTapped;
   final void Function()? onDigestTapped;
+  final void Function()? onHabitDigestTapped;
+
+  /// Owns the habit digest's variant choice. The copy itself lives in
+  /// `habit_digest_copy.dart`, which stays deterministic — injectable here so
+  /// a test can pin which variant comes out.
+  final Random _random;
 
   /// Habit reads go through the repository — nothing outside it writes to
   /// `habits`. The fallback is only ever used for reads, which log no event,
@@ -77,7 +92,30 @@ class ReminderService {
 
   static const String channelId = 'task_reminders';
   static const String channelName = 'Task reminders';
+
+  /// The task digest's reserved id band is 1..[_maxDigestSlots].
+  ///
+  /// **Id 7 is taken too** — it is the habit digest
+  /// ([habitDigestNotificationId]). Raising this constant would walk the task
+  /// digest straight over it, so move the habit digest first if this ever
+  /// needs to grow.
   static const int _maxDigestSlots = 6;
+
+  /// The habit digest's fixed id, immediately after the task digest's band and
+  /// far below where the shared counter starts (1000). Fixed rather than
+  /// allocated for the same reason the task digest's ids are: there is then
+  /// nothing to persist, and cancel-then-reschedule is always safe.
+  static const int habitDigestNotificationId = 7;
+
+  /// Settings key holding the last habit-digest variant index used, so the
+  /// next digest of the same tone does not repeat the line. Same
+  /// settings-backed-marker pattern as `MilestoneCelebrationController`'s
+  /// `milestone_celebrated_v1`.
+  static const String habitDigestLastIndexKey = 'habit_digest_last_index_v1';
+
+  /// Default fire time for the habit digest: 20:00, in minutes past midnight.
+  /// Evening, because the line it carries is about what is still open today.
+  static const int defaultHabitDigestTimeMin = 20 * 60;
 
   static const AndroidNotificationDetails _androidDetails = AndroidNotificationDetails(
     channelId,
@@ -238,15 +276,23 @@ class ReminderService {
 
     await reconcileHabits();
     await reconcileDigest();
+    await reconcileHabitDigest();
   }
 
   // ────────────────────────────────────────────────────────────────── habits
 
-  /// Routes a tapped notification: `task:<id>`, `habit:<id>`, or `digest`.
+  /// Routes a tapped notification: `task:<id>`, `habit:<id>`, `digest` or
+  /// `habit_digest`.
+  ///
+  /// `habit_digest` is checked before the `habit:` prefix would ever match it
+  /// — it has no colon, so the two cannot collide, but the ordering is worth
+  /// keeping deliberate if either string changes.
   void _dispatchPayload(String? payload) {
     if (payload == null) return;
     if (payload.startsWith('task:')) {
       onNotificationTapped?.call(payload.substring(5));
+    } else if (payload == 'habit_digest') {
+      onHabitDigestTapped?.call();
     } else if (payload.startsWith('habit:')) {
       onHabitNotificationTapped?.call(payload.substring(6));
     } else if (payload == 'digest') {
@@ -515,6 +561,113 @@ class ReminderService {
     return parts.join(' · ');
   }
 
+  // ─────────────────────────────────────────────────────── habit digest
+
+  /// Cancels and, if configured, reschedules the once-daily habit digest — a
+  /// single "Cairn" notification whose one line is chosen from three tones by
+  /// [selectHabitDigestTone].
+  ///
+  /// Opt-in and off by default, the same posture as the task digest: a new
+  /// install gets no unrequested notifications. One configurable time rather
+  /// than the task digest's list — a habit nudge is a single daily prompt, and
+  /// a second one on the same day would be the same sentence again.
+  ///
+  /// Fixed id [habitDigestNotificationId] means nothing about the schedule has
+  /// to be persisted; cancel-then-reschedule is always safe.
+  ///
+  /// The body reflects habit state *as of this call*, not as of the moment it
+  /// actually fires — the same limitation the task digest and the per-task
+  /// reminders already have. Reconciling runs often enough (startup, every
+  /// reminder-setting change, the day-rollover watch) that this stays close
+  /// enough in practice.
+  Future<void> reconcileHabitDigest() async {
+    await _plugin.cancel(id: habitDigestNotificationId);
+
+    final digestEnabled = await settingsRepo.getBool('habit_digest_enabled') ?? false;
+    final remindersEnabled = await settingsRepo.getBool('reminders_enabled') ?? true;
+    if (!digestEnabled || !remindersEnabled) return;
+
+    final today = timeService.todayLocalDate();
+    final habits = [
+      for (final snapshot in await _habits.loadActiveSnapshots())
+        HabitDigestInput(
+          currentStreak: snapshot.streaks.current,
+          outcomes: snapshot.streaks.outcomes,
+        ),
+    ];
+
+    final tone = selectHabitDigestTone(
+      habits: habits,
+      todayLocalDate: today,
+      yesterdayLocalDate: TimeService.addDays(today, -1),
+      startOfWeekLocalDate: timeService.startOfWeek(today),
+    );
+    // Nothing meaningful to say — schedule nothing, exactly as the task digest
+    // does with an empty due list.
+    if (tone == null) return;
+
+    final content = selectHabitDigestBody(
+      habits: habits,
+      todayLocalDate: today,
+      yesterdayLocalDate: TimeService.addDays(today, -1),
+      startOfWeekLocalDate: timeService.startOfWeek(today),
+      templateIndex: await _nextHabitDigestIndex(tone),
+    );
+    if (content == null) return;
+
+    await settingsRepo.setInt(habitDigestLastIndexKey, content.templateIndex);
+
+    final minutes = await settingsRepo.getInt('habit_digest_time_min') ??
+        defaultHabitDigestTimeMin;
+    final nowTz = tz.TZDateTime.now(tz.local);
+    var fireTz = tz.TZDateTime(
+      tz.local,
+      nowTz.year,
+      nowTz.month,
+      nowTz.day,
+      minutes ~/ 60,
+      minutes % 60,
+    );
+    if (!fireTz.isAfter(nowTz)) {
+      fireTz = fireTz.add(const Duration(days: 1));
+    }
+
+    await _plugin.zonedSchedule(
+      id: habitDigestNotificationId,
+      title: 'Cairn',
+      body: content.body,
+      scheduledDate: fireTz,
+      notificationDetails: _details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: 'habit_digest',
+    );
+  }
+
+  /// A variant index for [tone] that is not the one used last time.
+  ///
+  /// Picks uniformly among the rest. With a single-variant pool there is no
+  /// "rest" to pick from, so it repeats rather than looping forever looking
+  /// for an alternative that does not exist.
+  ///
+  /// Only deduplicates within a pool. A tone change already produces a
+  /// completely different sentence, so index 1 of the freeze pool following
+  /// index 1 of the streak pool is not a repeat in any sense the reader would
+  /// notice.
+  Future<int> _nextHabitDigestIndex(HabitDigestTone tone) async {
+    final count = habitDigestVariantCount(tone);
+    if (count <= 1) return 0;
+
+    final last = await settingsRepo.getInt(habitDigestLastIndexKey);
+    if (last == null || last < 0 || last >= count) {
+      return _random.nextInt(count);
+    }
+
+    // Draw from the count-1 indices that are not `last`, then step over it —
+    // uniform across the alternatives, and no retry loop.
+    final drawn = _random.nextInt(count - 1);
+    return drawn >= last ? drawn + 1 : drawn;
+  }
+
   String _formatTimeOfDay(int hour, int minute) {
     final period = hour >= 12 ? 'PM' : 'AM';
     final h12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
@@ -543,6 +696,9 @@ final reminderServiceProvider = Provider<ReminderService>((ref) {
     },
     onDigestTapped: () {
       ref.read(navigationIndexProvider.notifier).state = NavTabs.tasks;
+    },
+    onHabitDigestTapped: () {
+      ref.read(navigationIndexProvider.notifier).state = NavTabs.habits;
     },
   );
 });

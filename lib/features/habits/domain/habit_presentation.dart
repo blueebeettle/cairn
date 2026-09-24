@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/habits/habit_streak.dart';
+import '../../../core/habits/milestone_thresholds.dart';
 import '../../../core/recurrence/recurrence.dart';
 import '../../../core/time/time_service.dart';
 import '../../../data/repositories/habits_repository.dart';
@@ -157,6 +158,23 @@ abstract final class HabitDates {
     return 'Next: ${d.day} ${monthNames[d.month - 1].substring(0, 3)}';
   }
 
+  /// "Freeze used yesterday — streak safe".
+  ///
+  /// Deliberately not phrased as a miss: the rest day was inside the monthly
+  /// allowance, the streak is intact, and a row that looks like a failure is
+  /// the thing the allowance exists to prevent.
+  static String freezeUsedLabel(String localDate, String today) {
+    final gap = TimeService.daysBetween(localDate, today);
+    final d = TimeService.parseLocalDate(localDate);
+    final when = switch (gap) {
+      <= 0 => 'today',
+      1 => 'yesterday',
+      < 7 => 'on ${weekdayNames[d.weekday - 1]}',
+      _ => 'on ${d.day} ${monthNames[d.month - 1].substring(0, 3)}',
+    };
+    return 'Freeze used $when — streak safe';
+  }
+
   /// '9:00 AM' from minutes past midnight.
   static String timeOfDay(int minutes) {
     final h = minutes ~/ 60;
@@ -295,6 +313,34 @@ extension HabitSnapshotViews on HabitSnapshot {
   int get totalCheckOffs => HabitStats.totalCheckOffs(entries);
 
   bool get isRestingToday => todayOutcome == HabitDayOutcome.neutral;
+
+  /// The streak figure when today lands exactly on a milestone, else null.
+  ///
+  /// Exact per [MilestoneThresholds.reached] — day 31 of a 30-day streak is
+  /// not a milestone, so the card glows for one day rather than for a month.
+  int? get milestoneToday =>
+      MilestoneThresholds.reached(streaks.current) ? streaks.current : null;
+
+  /// The most recent *settled* scheduled day, when it resolved to an excused
+  /// rest day rather than a miss.
+  ///
+  /// Today is skipped: an unchecked habit resolves to `missed` all day, so
+  /// reading today would hide yesterday's freeze behind a miss that has not
+  /// happened yet. A rest day marked for today needs no forgiveness line
+  /// either — the list already files it under "done today".
+  ///
+  /// Only the latest settled day counts: a freeze three weeks back is
+  /// history, and labelling the row for it reads as though the streak were
+  /// still in doubt.
+  String? get freezeUsedOn {
+    for (final date in scheduledDates.reversed) {
+      if (date == todayLocalDate) continue;
+      final outcome = streaks.outcomes[date];
+      if (outcome == null) continue;
+      return outcome == HabitDayOutcome.neutral ? date : null;
+    }
+    return null;
+  }
 }
 
 /// '82%', or an em dash when the rate is undefined. Never '0%' for null.

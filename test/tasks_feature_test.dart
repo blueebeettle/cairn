@@ -214,6 +214,13 @@ void main() {
       await tester.pump();
       await tester.pump();
 
+      // TASKS sits below the first frame's viewport on the Today screen.
+      await tester.scrollUntilVisible(
+        find.text('TASKS'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+
       expect(find.text('TASKS'), findsOneWidget);
       expect(find.text('Review PR and deploy to prod'), findsOneWidget);
       expect(find.text('Work'), findsOneWidget);

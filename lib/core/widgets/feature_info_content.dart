@@ -49,9 +49,10 @@ abstract final class FeatureInfoContent {
         heading: 'Capturing quickly',
         body:
             'Tap + to jot a task down in one line. You can type the details '
-            'inline — a date like "tomorrow", a !1 for top priority, or a '
-            '#tag — and they are picked out for you. Long-press + when you '
-            'want the full form instead.',
+            'inline — a date like "tomorrow", !p1 to !p4 for priority with 1 '
+            'the highest, a #tag, or ~2p to estimate how many focus sessions '
+            'it will take — and they are picked out for you. Long-press + '
+            'when you want the full form instead.',
       ),
       FeatureInfoSection(
         heading: 'Priority and order',

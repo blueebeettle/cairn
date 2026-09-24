@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/habits/habit_streak.dart';
+import '../../../core/widgets/cairn_glyph.dart';
 import '../../../data/providers/habit_providers.dart';
 import '../../../data/repositories/habits_repository.dart';
 import '../../../core/widgets/feature_info.dart';
@@ -14,6 +15,8 @@ import 'habit_detail_screen.dart';
 import 'habit_edit_sheet.dart';
 import 'widgets/habit_check_button.dart';
 import 'widgets/habit_marks.dart';
+import 'widgets/habit_milestone.dart';
+import 'widgets/weekly_recap_card.dart';
 
 /// The Habits tab.
 ///
@@ -51,6 +54,11 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
           ),
         ),
         actions: [
+          // Forgiveness up front: the allowance already exists in the data,
+          // it was just never shown anywhere.
+          if (snapshotsAsync.value case final snapshots?
+              when snapshots.isNotEmpty)
+            FreezesChip(remaining: totalFreezesRemaining(snapshots)),
           const FeatureInfoButton(info: FeatureInfoContent.habits),
           IconButton(
             tooltip: mode == HabitViewMode.streak
@@ -95,16 +103,17 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
             const FeatureInfoCard(info: FeatureInfoContent.habits),
             Expanded(
               child: snapshotsAsync.when(
-          // Every check-off writes habit_entries, which makes the snapshots
-          // provider RELOAD (a dependency changed) — not refresh. Without
-          // this the whole list flashes to a spinner on every tap.
-          skipLoadingOnReload: true,
-          skipLoadingOnRefresh: true,
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Could not load habits: $e')),
-          data: (snapshots) => snapshots.isEmpty
-              ? const _EmptyHabits()
-              : _buildList(context, snapshots, mode),
+                // Every check-off writes habit_entries, which makes the snapshots
+                // provider RELOAD (a dependency changed) — not refresh. Without
+                // this the whole list flashes to a spinner on every tap.
+                skipLoadingOnReload: true,
+                skipLoadingOnRefresh: true,
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) =>
+                    Center(child: Text('Could not load habits: $e')),
+                data: (snapshots) => snapshots.isEmpty
+                    ? const _EmptyHabits()
+                    : _buildList(context, snapshots, mode),
               ),
             ),
           ],
@@ -139,6 +148,13 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
       children: [
+        // Above the list, below the header — and inside the ListView rather
+        // than pinned over it, so it scrolls away instead of eating a third
+        // of the screen on a phone with a dozen habits. It renders nothing
+        // when there are no active habits, which `_buildList` already
+        // guarantees, but the card re-checks for itself rather than relying
+        // on this one caller.
+        const WeeklyRecapCard(),
         if (due.isNotEmpty) ...[
           const _SectionHeader('Today'),
           for (final s in due) row(s),
@@ -184,71 +200,114 @@ class _StreakCard extends StatelessWidget {
     final accent = HabitColors.of(context, habit.colorIndex);
     final muted = !snapshot.isScheduledToday;
     final days = snapshot.lastScheduledDays(7);
+    final milestone = snapshot.milestoneToday;
+    final frozenOn = snapshot.freezeUsedOn;
+
+    // The subtitle says the one thing that matters most about this row today:
+    // a milestone, then a freeze that saved the streak, then the schedule.
+    final (String subtitle, Color subtitleColor) = switch ((
+      milestone,
+      frozenOn,
+    )) {
+      (final int days, _) => (
+        '$days-day milestone today',
+        context.colors.primary,
+      ),
+      (_, final String date) => (
+        HabitDates.freezeUsedLabel(date, snapshot.todayLocalDate),
+        tokens.textSecondary,
+      ),
+      _ => (
+        HabitScheduleText.describe(habit.scheduleRule),
+        tokens.textSecondary,
+      ),
+    };
 
     return Opacity(
       opacity: muted ? 0.62 : 1,
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: InkWell(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => HabitDetailScreen.open(context, habit.id),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-            child: Row(
-              children: [
-                ExcludeSemantics(
-                  child: CircleAvatar(
-                    radius: 20,
-                    backgroundColor: accent.withValues(alpha: 0.14),
-                    child: Icon(
-                      HabitIcons.of(habit.iconName),
-                      color: accent,
-                      size: 22,
+          boxShadow: milestone == null ? null : MilestoneChrome.glow(context),
+        ),
+        child: Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          shape: milestone == null
+              ? null
+              : RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: MilestoneChrome.ring(context),
+                ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => HabitDetailScreen.open(context, habit.id),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    // 0.6 is the mockup's 46x50 milestone glyph exactly.
+                    child: milestone == null
+                        ? CircleAvatar(
+                            radius: 20,
+                            backgroundColor: accent.withValues(alpha: 0.14),
+                            child: Icon(
+                              HabitIcons.of(habit.iconName),
+                              color: accent,
+                              size: 22,
+                            ),
+                          )
+                        : const CairnGlyph(stoneCount: 3, scale: 0.6),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          habit.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          subtitle,
+                          style: textTheme.bodySmall?.copyWith(
+                            color: subtitleColor,
+                            fontWeight: milestone == null
+                                ? null
+                                : FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (milestone == null)
+                              HabitStreakBadge(
+                                streak: snapshot.streaks.current,
+                                color: accent,
+                              )
+                            else
+                              MilestoneStreakPill(streak: milestone),
+                            _RecentDots(
+                              snapshot: snapshot,
+                              days: days,
+                              color: accent,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        habit.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        HabitScheduleText.describe(habit.scheduleRule),
-                        style: textTheme.bodySmall?.copyWith(
-                          color: tokens.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 6,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          HabitStreakBadge(
-                            streak: snapshot.streaks.current,
-                            color: accent,
-                          ),
-                          _RecentDots(
-                            snapshot: snapshot,
-                            days: days,
-                            color: accent,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                HabitCheckButton(snapshot: snapshot, diameter: 56),
-              ],
+                  const SizedBox(width: 8),
+                  HabitCheckButton(snapshot: snapshot, diameter: 56),
+                ],
+              ),
             ),
           ),
         ),
@@ -335,11 +394,17 @@ class _CompactRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                HabitStreakBadge(
-                  streak: snapshot.streaks.current,
-                  color: accent,
-                  large: false,
-                ),
+                // Compact rows are one line by design, so a milestone shows
+                // as the filled pill and nothing else — the glow card and the
+                // forgiveness line belong to the streak view.
+                if (snapshot.milestoneToday case final int milestone)
+                  MilestoneStreakPill(streak: milestone)
+                else
+                  HabitStreakBadge(
+                    streak: snapshot.streaks.current,
+                    color: accent,
+                    large: false,
+                  ),
                 const SizedBox(width: 4),
               ],
             ),

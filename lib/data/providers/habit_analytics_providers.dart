@@ -73,3 +73,17 @@ final habitHeatmapThresholdsProvider = FutureProvider<HeatmapThresholds>((ref) {
   final time = ref.watch(timeServiceProvider);
   return repo.heatmapThresholds(todayLocalDate: time.todayLocalDate());
 });
+
+/// The Habits screen's "This week" recap card.
+///
+/// Deliberately NOT derived from `statsPeriodProvider` the way
+/// [habitStatsBundleProvider] above is. That provider follows the Stats
+/// screen's range picker, which is exactly right for the Stats screen and
+/// exactly wrong here: a card titled "This week" that quietly switched to a
+/// 90-day window because of what was last tapped on another tab would be
+/// contradicting its own heading. The repository resolves the current
+/// calendar week itself, from the same `TimeService` everything else reads.
+final weeklyRecapBundleProvider = StreamProvider<WeeklyRecap>((ref) {
+  final repo = ref.watch(habitAnalyticsRepositoryProvider);
+  return _testSafeStream(repo.watchWeeklyRecap());
+});

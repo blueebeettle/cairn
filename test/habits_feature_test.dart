@@ -876,6 +876,22 @@ void main() {
       expect(ours, isEmpty, reason: screen);
     }
 
+    /// Taps a collapsed-section header, scrolling it into view first.
+    ///
+    /// At 200% scale the weekly recap card and the first section fill the
+    /// viewport, so the header below them is not built until it is scrolled
+    /// to — `tap` alone finds nothing.
+    Future<void> tapHeader(WidgetTester tester, String label) async {
+      await tester.scrollUntilVisible(
+        find.text(label),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await _settle(tester);
+      await tester.tap(find.text(label));
+      await _settle(tester);
+    }
+
     testWidgets('Habits tab — first run empty state', (tester) async {
       _phone(tester);
       final h = _Harness('2026-09-14');
@@ -912,8 +928,7 @@ void main() {
       await audit(tester, 'Habits streak view', () async {
         await tester.pumpWidget(_app(h, const HabitsScreen(), textScale: 2));
         await _settle(tester);
-        await tester.tap(find.text('2 not scheduled today'));
-        await _settle(tester);
+        await tapHeader(tester, '2 not scheduled today');
         await tester.drag(find.byType(ListView), const Offset(0, -600));
         await _settle(tester);
       });
@@ -928,8 +943,7 @@ void main() {
         await _settle(tester);
         await tester.tap(find.byTooltip('Switch to list view'));
         await _settle(tester);
-        await tester.tap(find.text('2 not scheduled today'));
-        await _settle(tester);
+        await tapHeader(tester, '2 not scheduled today');
       });
     });
 

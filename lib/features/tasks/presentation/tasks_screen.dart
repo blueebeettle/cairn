@@ -8,10 +8,14 @@ import '../../../data/providers/database_provider.dart';
 import '../../../data/repositories/tasks_repository.dart';
 import '../../../core/widgets/feature_info.dart';
 import '../../../core/widgets/feature_info_content.dart';
+import '../../../core/widgets/cairn_card.dart';
 import '../../../theme/app_theme.dart';
 import '../../timer/presentation/timer_controller.dart';
 import 'archived_tasks_screen.dart';
+import '../../habits/presentation/widgets/habit_check_burst.dart';
 import 'widgets/quick_capture_sheet.dart';
+import 'widgets/task_priority_dot.dart';
+import 'widgets/task_summary_cards.dart';
 import 'widgets/task_deletion_handler.dart';
 import 'widgets/task_detail_sheet.dart';
 
@@ -105,32 +109,10 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           preferredSize: const Size.fromHeight(48),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: SegmentedButton<TaskViewTab>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              segments: const [
-                ButtonSegment(
-                  value: TaskViewTab.today,
-                  label: FittedBox(fit: BoxFit.scaleDown, child: Text('Today')),
-                ),
-                ButtonSegment(
-                  value: TaskViewTab.upcoming,
-                  label: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('Upcoming'),
-                  ),
-                ),
-                ButtonSegment(
-                  value: TaskViewTab.inbox,
-                  label: FittedBox(fit: BoxFit.scaleDown, child: Text('Inbox')),
-                ),
-              ],
-              selected: {activeTab},
-              onSelectionChanged: (s) =>
-                  ref.read(taskViewTabProvider.notifier).state = s.first,
+            child: _TaskViewPicker(
+              selected: activeTab,
+              onSelected: (s) =>
+                  ref.read(taskViewTabProvider.notifier).state = s,
             ),
           ),
         ),
@@ -173,6 +155,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                   child: Row(
                     children: [
                       FilterChip(
+                        shape: const StadiumBorder(),
                         label: const Text('All Projects'),
                         selected: _selectedProjectId == null,
                         onSelected: (_) =>
@@ -181,6 +164,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                       const SizedBox(width: 8),
                       for (final p in projects) ...[
                         FilterChip(
+                          shape: const StadiumBorder(),
                           avatar: CircleAvatar(
                             radius: 5,
                             backgroundColor: tokens
@@ -260,13 +244,21 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             left: 16,
             right: 16,
             top: 8,
-            bottom: 88,
+            // Clears the extended FAB at the end of the list; matches the
+            // Habits list's reserve so the two tabs scroll to the same stop.
+            bottom: 96,
           ),
           children: [
+            TodayProgressCard(
+              open: openTasks.length,
+              done: doneTasks.length,
+            ),
             for (final td in openTasks)
               _buildDismissibleTaskCard(context, ref, td),
             if (doneTasks.isNotEmpty) ...[
               const SizedBox(height: 8),
+              // The control that expands the done list - kept as it was; the
+              // card below is the day's tally, not another toggle.
               _buildCompletedSummaryRow(
                 context,
                 count: doneTasks.length,
@@ -280,6 +272,11 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 for (final td in doneTasks)
                   _buildDismissibleTaskCard(context, ref, td),
             ],
+            const SizedBox(height: 12),
+            DoneTodayCard(
+              done: doneTasks.length,
+              remaining: openTasks.length,
+            ),
           ],
         );
       },
@@ -311,7 +308,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             left: 16,
             right: 16,
             top: 8,
-            bottom: 88,
+            // Clears the extended FAB at the end of the list; matches the
+            // Habits list's reserve so the two tabs scroll to the same stop.
+            bottom: 96,
           ),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
@@ -344,7 +343,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             left: 16,
             right: 16,
             top: 8,
-            bottom: 88,
+            // Clears the extended FAB at the end of the list; matches the
+            // Habits list's reserve so the two tabs scroll to the same stop.
+            bottom: 96,
           ),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
@@ -376,14 +377,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      color: colors.surfaceContainerLowest,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.3)),
-      ),
+      // Radius, fill and shadow all come from `cardTheme` now.
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -531,18 +527,15 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      color: isDone
-          ? colors.surfaceContainerLowest
-          : colors.surfaceContainerLow,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: task.priority <= 3 && !isDone
-              ? priorityColor.withValues(alpha: 0.5)
-              : colors.outlineVariant.withValues(alpha: 0.3),
-        ),
-      ),
+      // Fill and shadow come from `cardTheme`. The only thing kept local is
+      // the priority outline, which carries meaning rather than style — a
+      // high-priority task still wears its tint.
+      shape: task.priority <= 3 && !isDone
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+              side: BorderSide(color: priorityColor.withValues(alpha: 0.5)),
+            )
+          : null,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => TaskDetailSheet.show(context, taskDetails: taskDetails),
@@ -562,9 +555,11 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     ? 'Mark "${task.title}" incomplete'
                     : 'Mark "${task.title}" complete',
                 checked: isDone,
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
+                // The same flourish as the habit check circle, reused rather
+                // than reimplemented: it fires on false -> true only.
+                child: HabitCheckBurst(
+                  done: isDone,
+                  diameter: 48,
                   child: Center(
                     child: Checkbox(
                       value: isDone,
@@ -587,15 +582,31 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      task.title,
-                      style: textTheme.bodyLarge?.copyWith(
-                        decoration: isDone ? TextDecoration.lineThrough : null,
-                        color: isDone ? tokens.textMuted : colors.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Second use of the same priority colour the card
+                        // border already carries.
+                        TaskPriorityDot(
+                          color: isDone ? Colors.transparent : priorityColor,
+                        ),
+                        Expanded(
+                          child: Text(
+                            task.title,
+                            style: textTheme.bodyLarge?.copyWith(
+                              decoration: isDone
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: isDone
+                                  ? tokens.textMuted
+                                  : colors.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
 
@@ -678,21 +689,38 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                             ],
                           ),
 
-                        // Subtasks progress
+                        // Subtasks progress - the mockup's 60x5 inline bar.
                         if (totalSubtasks > 0)
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                Icons.checklist_rounded,
-                                size: 12,
-                                color: tokens.textMuted,
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(2.5),
+                                child: SizedBox(
+                                  width: 60,
+                                  child: LinearProgressIndicator(
+                                    value: subtasksDone / totalSubtasks,
+                                    minHeight: 5,
+                                    backgroundColor: tokens.lineSoft,
+                                    valueColor: AlwaysStoppedAnimation(
+                                      colors.primary,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              const SizedBox(width: 3),
-                              Text(
-                                '$subtasksDone/$totalSubtasks',
-                                style: textTheme.labelSmall?.copyWith(
-                                  color: tokens.textMuted,
+                              const SizedBox(width: 8),
+                              // Flexible so a wide font or a large text scale
+                              // shortens the label instead of overflowing the
+                              // badge row.
+                              Flexible(
+                                child: Text(
+                                  '$subtasksDone of $totalSubtasks subtasks',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textTheme.labelSmall?.copyWith(
+                                    color: tokens.textMuted,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ],
@@ -897,6 +925,82 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Today / Upcoming / Inbox, as a tinted track with one filled pill.
+///
+/// The same control the Stats range picker and the Focus mode picker use.
+/// It was a `SegmentedButton` — three joined outlines with a pale selected
+/// fill — which is a third look for what is the same kind of choice.
+class _TaskViewPicker extends StatelessWidget {
+  const _TaskViewPicker({required this.selected, required this.onSelected});
+
+  final TaskViewTab selected;
+  final ValueChanged<TaskViewTab> onSelected;
+
+  static const _labels = {
+    TaskViewTab.today: 'Today',
+    TaskViewTab.upcoming: 'Upcoming',
+    TaskViewTab.inbox: 'Inbox',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final tokens = context.tokens;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: CardChrome.pickerTrack(context),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Row(
+        children: [
+          for (final tab in TaskViewTab.values) ...[
+            if (tab != TaskViewTab.values.first) const SizedBox(width: 2),
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: tab == selected,
+                inMutuallyExclusiveGroup: true,
+                label: _labels[tab]!,
+                excludeSemantics: true,
+                child: Material(
+                  color: tab == selected ? colors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(9),
+                    onTap: () => onSelected(tab),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      child: Text(
+                        _labels[tab]!,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              fontSize: 11.5,
+                              letterSpacing: 0,
+                              fontWeight: tab == selected
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: tab == selected
+                                  ? colors.onPrimary
+                                  : tokens.textMuted,
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

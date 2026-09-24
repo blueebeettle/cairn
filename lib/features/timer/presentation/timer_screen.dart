@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/notifications/notification_permission_helper.dart';
+import '../../../core/widgets/cairn_card.dart';
 import '../../../core/widgets/focus_ring.dart';
 import '../../../core/widgets/feature_info.dart';
 import '../../../core/widgets/feature_info_content.dart';
@@ -20,7 +21,7 @@ import 'widgets/task_selector_sheet.dart';
 /// Wrapped in a single Center so it sits as one block. No Spacers between individual elements.
 ///
 /// States:
-/// 1. Ready: SegmentedButton (Pomodoro/Flow), equal-width FilterChips, track-only FocusRing, FilledButton "Start focus".
+/// 1. Ready: pill mode picker (Pomodoro/Open-ended), equal-width FilterChips, track-only FocusRing, FilledButton "Start focus".
 /// 2. Running: Assist chip "Focusing", depleting FocusRing, FilledButton.tonal "Pause" + OutlinedButton "Stop", live interruption pills.
 /// 3. Paused: FocusRing in lighter lavender, dimmed figure, "Paused · Xm Ys", "Resume" + "Stop".
 /// 4. Complete: Full FocusRing "25m logged", 1-5 circular targets with "Scattered"/"Locked in", TextButton "Skip" + FilledButton "Start break".
@@ -123,7 +124,7 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Focus Timer',
+          'Focus',
           style: textTheme.headlineSmall?.copyWith(
             color: colors.primary,
             fontWeight: FontWeight.w700,
@@ -184,24 +185,7 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Mode Selector
-          SegmentedButton<TimerMode>(
-            segments: const [
-              ButtonSegment<TimerMode>(
-                value: TimerMode.pomodoro,
-                label: Text('Pomodoro'),
-                icon: Icon(Icons.timer_outlined),
-              ),
-              ButtonSegment<TimerMode>(
-                value: TimerMode.flow,
-                label: Text('Open-ended'),
-                icon: Icon(Icons.all_inclusive_rounded),
-              ),
-            ],
-            selected: {timerState.mode},
-            onSelectionChanged: (selection) {
-              controller.setMode(selection.first);
-            },
-          ),
+          _buildModePicker(context, controller, timerState.mode),
           const SizedBox(height: 12),
 
           // Duration chips: four presets plus Custom, all equal width.
@@ -216,6 +200,14 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 3),
                       child: FilterChip(
                         showCheckmark: false,
+                        shape: const StadiumBorder(),
+                        side: _TimerChrome.chipSide(context, isSelected),
+                        backgroundColor: CardChrome.card(context),
+                        selectedColor: colors.primary,
+                        labelStyle: _TimerChrome.chipLabel(context, isSelected),
+                        labelPadding: EdgeInsets.zero,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
                         label: Center(
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
@@ -239,24 +231,36 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: FilterChip(
-                      showCheckmark: false,
-                      label: Center(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            _isCustomSelected(timerState.plannedDurationS)
-                                ? '${timerState.plannedDurationS ~/ 60} min'
-                                : 'Custom',
+                    child: Builder(builder: (context) {
+                      final isSelected =
+                          _isCustomSelected(timerState.plannedDurationS);
+                      return FilterChip(
+                        showCheckmark: false,
+                        shape: const StadiumBorder(),
+                        side: _TimerChrome.chipSide(context, isSelected),
+                        backgroundColor: CardChrome.card(context),
+                        selectedColor: colors.primary,
+                        labelStyle: _TimerChrome.chipLabel(context, isSelected),
+                        labelPadding: EdgeInsets.zero,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+                        label: Center(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              isSelected
+                                  ? '${timerState.plannedDurationS ~/ 60} min'
+                                  : 'Custom',
+                            ),
                           ),
                         ),
-                      ),
-                      selected: _isCustomSelected(timerState.plannedDurationS),
-                      onSelected: (_) => _pickCustomDuration(
-                        controller,
-                        timerState.plannedDurationS,
-                      ),
-                    ),
+                        selected: isSelected,
+                        onSelected: (_) => _pickCustomDuration(
+                          controller,
+                          timerState.plannedDurationS,
+                        ),
+                      );
+                    }),
                   ),
                 ),
               ],
@@ -313,15 +317,11 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Assist chip: "Focusing"
-          Center(
-            child: Chip(
-              avatar: Icon(
-                Icons.play_circle_fill_rounded,
-                size: 18,
-                color: colors.primary,
-              ),
-              label: Text(timerState.isFlow ? 'Open-ended' : 'Focusing'),
-            ),
+          _StatusChip(
+            icon: Icons.play_circle_fill_rounded,
+            label: timerState.isFlow ? 'Open-ended' : 'Focusing',
+            foreground: colors.primary,
+            background: colors.primaryContainer,
           ),
           const SizedBox(height: 8),
           Center(child: _buildAttachedTaskSection(context, ref, timerState)),
@@ -392,16 +392,15 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Status chip: "Paused · Xm Ys"
-          Center(
-            child: Chip(
-              avatar: Icon(
-                Icons.pause_circle_outline_rounded,
-                size: 18,
-                color: colors.secondary,
-              ),
-              label: Text(pausedLabel),
-            ),
+          // Status chip: "Paused · Xm Ys". The lavender `secondary` itself
+          // scores 2.74:1 on cream and must never carry text, so the chip
+          // takes the lavender *container* pair — the same family the paused
+          // ring arc uses, at a contrast that is legible.
+          _StatusChip(
+            icon: Icons.pause_circle_outline_rounded,
+            label: pausedLabel,
+            foreground: colors.onSecondaryContainer,
+            background: colors.secondaryContainer,
           ),
           const SizedBox(height: 8),
           Center(child: _buildAttachedTaskSection(context, ref, timerState)),
@@ -532,15 +531,13 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(
-            child: Chip(
-              avatar: Icon(
-                Icons.self_improvement_rounded,
-                size: 18,
-                color: tokens.success,
-              ),
-              label: const Text('Break in progress'),
-            ),
+          _StatusChip(
+            icon: Icons.self_improvement_rounded,
+            label: 'Break in progress',
+            foreground: tokens.success,
+            // No container slot exists for the success token, so the fill is
+            // a tint of it — the same thing the Stats trend chip does.
+            background: tokens.success.withValues(alpha: 0.14),
           ),
 
           // status chip -> ring: 24dp
@@ -570,6 +567,47 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     return const SizedBox.shrink();
   }
 
+  /// Pomodoro / Open-ended, as a tinted track with one filled pill.
+  ///
+  /// Not `SegmentedButton`: the global `segmentedButtonTheme` gives two
+  /// adjoining stadium outlines, which is right where it is already used but
+  /// reads as two buttons rather than the single-track control this redesign
+  /// uses for mode-like choices. Built the same way the Stats range picker
+  /// builds its Week/30d/90d/All track, rather than reskinning that theme —
+  /// five other screens depend on it.
+  Widget _buildModePicker(
+    BuildContext context,
+    TimerController controller,
+    TimerMode selected,
+  ) {
+    const labels = {
+      TimerMode.pomodoro: 'Pomodoro',
+      TimerMode.flow: 'Open-ended',
+    };
+
+    return Container(
+      decoration: BoxDecoration(
+        color: CardChrome.pickerTrack(context),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Row(
+        children: [
+          for (final mode in TimerMode.values) ...[
+            if (mode != TimerMode.values.first) const SizedBox(width: 2),
+            Expanded(
+              child: _ModeSegment(
+                label: labels[mode]!,
+                selected: mode == selected,
+                onTap: () => controller.setMode(mode),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildInterruptions(BuildContext context, TimerState timerState) {
     final controller = ref.read(timerControllerProvider.notifier);
     final tokens = context.tokens;
@@ -585,12 +623,18 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
             Text(
               'Interruptions',
               style: textTheme.labelMedium?.copyWith(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
                 color: tokens.textSecondary,
               ),
             ),
             Text(
               'Total: ${timerState.totalInterruptions}',
               style: textTheme.labelSmall?.copyWith(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
                 color: tokens.textMuted,
               ),
             ),
@@ -654,9 +698,17 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Scattered',
-              style: textTheme.labelSmall?.copyWith(color: tokens.textMuted),
+            // Flexible so the two end labels give way before the row does.
+            // Five 40dp targets plus their gaps already eat most of a 360dp
+            // screen, and at a large text scale the labels would otherwise
+            // push the row into an overflow.
+            Flexible(
+              child: Text(
+                'Scattered',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelSmall?.copyWith(color: tokens.textMuted),
+              ),
             ),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -664,7 +716,7 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                 final val = index + 1;
                 final isSelected = _selectedRating == val;
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
                   child: InkWell(
                     customBorder: const CircleBorder(),
                     onTap: () => setState(() => _selectedRating = val),
@@ -697,9 +749,14 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                 );
               }),
             ),
-            Text(
-              'Locked in',
-              style: textTheme.labelSmall?.copyWith(color: tokens.textMuted),
+            Flexible(
+              child: Text(
+                'Locked in',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: textTheme.labelSmall?.copyWith(color: tokens.textMuted),
+              ),
             ),
           ],
         ),
@@ -745,6 +802,10 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     if (timerState.taskId == null) {
       return ActionChip(
         avatar: Icon(Icons.add_task_rounded, size: 16, color: colors.primary),
+        shape: const StadiumBorder(),
+        side: BorderSide(color: colors.outline),
+        backgroundColor: CardChrome.card(context),
+        labelStyle: _TimerChrome.taskChipLabel(context),
         label: const Text('Attach task'),
         onPressed: () => TaskSelectorSheet.show(context),
       );
@@ -755,7 +816,12 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
       data: (td) {
         if (td == null) {
           return ActionChip(
-            avatar: Icon(Icons.add_task_rounded, size: 16, color: colors.primary),
+            avatar:
+                Icon(Icons.add_task_rounded, size: 16, color: colors.primary),
+            shape: const StadiumBorder(),
+            side: BorderSide(color: colors.outline),
+            backgroundColor: CardChrome.card(context),
+            labelStyle: _TimerChrome.taskChipLabel(context),
             label: const Text('Attach task'),
             onPressed: () => TaskSelectorSheet.show(context),
           );
@@ -768,6 +834,10 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
 
         return InputChip(
           avatar: Icon(Icons.task_alt_rounded, size: 16, color: colors.primary),
+          shape: const StadiumBorder(),
+          side: BorderSide.none,
+          backgroundColor: context.tokens.lineSoft,
+          labelStyle: _TimerChrome.taskChipLabel(context),
           label: Text(
             '$title$estimate',
             maxLines: 1,
@@ -887,6 +957,146 @@ class _CustomDurationDialogState extends State<_CustomDurationDialog> {
           child: const Text('Use this'),
         ),
       ],
+    );
+  }
+}
+
+/// Chip typography for the Focus screen. Surfaces and tracks come from the
+/// shared [CardChrome].
+abstract final class _TimerChrome {
+
+
+  /// A duration chip's outline. The selected chip's border matches its fill so
+  /// the pill reads as one solid shape rather than a filled chip inside a
+  /// contrasting ring.
+  static BorderSide chipSide(BuildContext context, bool selected) {
+    final colors = context.colors;
+    return BorderSide(color: selected ? colors.primary : colors.outline);
+  }
+
+  /// Duration-chip label: 11px, 700, no tracking.
+  static TextStyle? chipLabel(BuildContext context, bool selected) {
+    final colors = context.colors;
+    return Theme.of(context).textTheme.labelMedium?.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+          color: selected ? colors.onPrimary : context.tokens.textSecondary,
+        );
+  }
+
+  /// Attached-task chip label: 12px, 700, no tracking.
+  static TextStyle? taskChipLabel(BuildContext context) {
+    return Theme.of(context).textTheme.labelMedium?.copyWith(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+          color: context.tokens.textSecondary,
+        );
+  }
+}
+
+/// One segment of the Pomodoro / Open-ended pill.
+///
+/// `Semantics(inMutuallyExclusiveGroup)` is what keeps this readable to a
+/// screen reader now that it is two plain tap targets rather than a real
+/// `SegmentedButton` — the same thing the Stats range picker does.
+class _ModeSegment extends StatelessWidget {
+  const _ModeSegment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final tokens = context.tokens;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? colors.primary : Colors.transparent,
+        borderRadius: BorderRadius.circular(9),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(9),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontSize: 11.5,
+                    letterSpacing: 0,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    color: selected ? colors.onPrimary : tokens.textMuted,
+                  ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The centred state pill above the ring — Focusing / Paused / Break.
+///
+/// One widget for all three so the three states cannot drift apart; only the
+/// icon, the wording and the colour pair change.
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: foreground),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                      color: foreground,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

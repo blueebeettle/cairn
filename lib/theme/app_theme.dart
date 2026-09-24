@@ -434,14 +434,24 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
 
     // ── Containers ──────────────────────────────────────────────────────
     // M3 shape scale: xs 4, sm 8, md 12, lg 16, xl 28.
+    // Pointed at the same surface, radius and flatness as `CairnCard`, so a
+    // plain `Card()` on a screen that has not been hand-built still lands
+    // inside the card system. Flat: the shadowed version was tried and did
+    // not suit the palette, so a card is told apart from the page by its fill
+    // alone.
+    //
+    // The fill is a brightness switch for the usual reason — dark's
+    // `surfaceContainerLowest` (#120D17) is *darker* than the page ground
+    // (#17111C), which made every dark card read as a hole in the screen.
     cardTheme: CardThemeData(
-      color: scheme.surfaceContainerLowest,
+      color: scheme.brightness == Brightness.dark
+          ? scheme.surfaceContainer
+          : scheme.surfaceContainerLowest,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(22),
       ),
     ),
     dialogTheme: DialogThemeData(

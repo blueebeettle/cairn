@@ -93,6 +93,41 @@ class HabitAnalyticsRepository {
         .asyncMap((_) => load(period));
   }
 
+  // ── Weekly recap ────────────────────────────────────────────────────
+
+  /// The Habits screen's "This week" card, for the current calendar week.
+  ///
+  /// Always the live week, never [StatsPeriod] from the Stats screen's range
+  /// picker — see [WeeklyRecap]'s doc for why a card headed "This week" must
+  /// not follow that selection.
+  ///
+  /// One [_inputs] call covers the lot. [buildWeeklyRecap] asks the same
+  /// in-memory list about this week, last week and each of seven days, and
+  /// since those functions are pure the extra windows cost arithmetic rather
+  /// than queries — the same trick the Stats trend chip uses to price its
+  /// prior-period comparison at zero.
+  Future<WeeklyRecap> loadWeeklyRecap() async {
+    final inputs = await _inputs();
+    final today = _time.todayLocalDate();
+    return buildWeeklyRecap(
+      habits: inputs,
+      todayLocalDate: today,
+      weekStartLocalDate: _time.startOfWeek(today),
+    );
+  }
+
+  /// [loadWeeklyRecap], re-run whenever a habit or an entry changes — so a
+  /// check-off on the Habits screen moves the card underneath it.
+  Stream<WeeklyRecap> watchWeeklyRecap() {
+    return _db
+        .customSelect(
+          'SELECT 1 AS change_trigger',
+          readsFrom: {_db.habits, _db.habitEntries},
+        )
+        .watch()
+        .asyncMap((_) => loadWeeklyRecap());
+  }
+
   // ── Activity heatmap ─────────────────────────────────────────────────────
 
   StatsPeriod heatmapWindow(String todayLocalDate) =>

@@ -326,7 +326,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify sections are rendered and reachable by scrolling
-      expect(find.text('Focus'), findsOneWidget);
+      expect(find.text('FOCUS'), findsOneWidget);
 
       final mainScrollable = find.byType(Scrollable).first;
 
@@ -336,20 +336,20 @@ void main() {
       await tester.scrollUntilVisible(find.textContaining("Today can't break your streak."), 200, scrollable: mainScrollable);
       expect(find.textContaining("Today can't break your streak."), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('Day & week'), 200, scrollable: mainScrollable);
-      expect(find.text('Day & week'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('DAY & WEEK'), 200, scrollable: mainScrollable);
+      expect(find.text('DAY & WEEK'), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('Appearance'), 200, scrollable: mainScrollable);
-      expect(find.text('Appearance'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('APPEARANCE'), 200, scrollable: mainScrollable);
+      expect(find.text('APPEARANCE'), findsOneWidget);
 
       await tester.scrollUntilVisible(find.widgetWithText(ListTile, 'Notifications'), 200, scrollable: mainScrollable);
       expect(find.widgetWithText(ListTile, 'Notifications'), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('Data'), 200, scrollable: mainScrollable);
-      expect(find.text('Data'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('DATA'), 200, scrollable: mainScrollable);
+      expect(find.text('DATA'), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('About'), 200, scrollable: mainScrollable);
-      expect(find.text('About'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('ABOUT'), 200, scrollable: mainScrollable);
+      expect(find.text('ABOUT'), findsOneWidget);
       expect(find.textContaining("from beetlebyte"), findsOneWidget);
 
       // Scroll back up to open Daily goal slider dialog

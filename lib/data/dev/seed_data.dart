@@ -9,6 +9,7 @@ import '../../core/ids.dart';
 import '../../core/recurrence/recurrence.dart';
 import '../../core/time/time_service.dart';
 import '../database/app_database.dart';
+import '../repositories/settings_repository.dart';
 
 /// Development-only data generator — POLISH.md §8.
 ///
@@ -76,6 +77,17 @@ class SeedData {
     'the migration', 'the icon',
   ];
 
+  static const _sessionNotes = [
+    'Deep work on architecture design.',
+    'Cleared inbox and pending reviews.',
+    'Drafted implementation notes.',
+    'Refactored legacy query logic.',
+    'Focused sprint on critical bugfix.',
+    'Good flow, wrapped up the prototype.',
+    'Wrote unit tests and coverage benchmarks.',
+    'Reviewed customer feedback and planned next iteration.',
+  ];
+
   /// Generates a history ending today and returns what it wrote.
   ///
   /// [onProgress] is called with a 0.0–1.0 fraction; on a phone this takes a
@@ -90,9 +102,30 @@ class SeedData {
     final startDate = TimeService.addDays(today, -(days - 1));
 
     final projectIds = await _insertProjects();
+    await _seedSettings();
 
     var eventCount = 0;
     var sessionCount = 0;
+
+    // Generate tasks first so focus sessions can link to real active tasks
+    final taskResult = await _insertTasks(
+      count: taskCount,
+      startDate: startDate,
+      days: days,
+      projectIds: projectIds,
+      onProgress: (f) => onProgress?.call(0.1 + f * 0.25),
+    );
+    eventCount += taskResult.events;
+
+    // Pre-index active tasks by day for O(1) task-attachment lookup
+    final tasksByDay = List<List<_SeededTaskInfo>>.generate(days, (_) => []);
+    for (final task in taskResult.tasks) {
+      final startDay = task.createdDayOffset;
+      final endDay = task.completedDayOffset ?? (days - 1);
+      for (var d = startDay; d <= endDay && d < days; d++) {
+        tasksByDay[d].add(task);
+      }
+    }
 
     // Written in chunks of a fortnight rather than one enormous batch: a single
     // batch of 12,000 statements holds every companion in memory at once, and
@@ -104,7 +137,14 @@ class SeedData {
 
       for (var d = dayOffset; d < dayOffset + chunkDays && d < days; d++) {
         final date = TimeService.addDays(startDate, d);
-        final written = _buildDay(date, projectIds, events, sessions);
+        final written = _buildDay(
+          date: date,
+          dayOffset: d,
+          projectIds: projectIds,
+          availableTasks: tasksByDay[d],
+          events: events,
+          sessions: sessions,
+        );
         sessionCount += written;
       }
 
@@ -113,23 +153,14 @@ class SeedData {
         batch.insertAll(_db.focusSessions, sessions);
       });
       eventCount += events.length;
-      onProgress?.call((dayOffset / days) * 0.6);
+      onProgress?.call(0.35 + (dayOffset / days) * 0.45);
     }
-
-    final taskEvents = await _insertTasks(
-      count: taskCount,
-      startDate: startDate,
-      days: days,
-      projectIds: projectIds,
-      onProgress: (f) => onProgress?.call(0.6 + f * 0.25),
-    );
-    eventCount += taskEvents;
 
     final habitResult = await _insertHabits(
       startDate: startDate,
       today: today,
       days: days,
-      onProgress: (f) => onProgress?.call(0.85 + f * 0.15),
+      onProgress: (f) => onProgress?.call(0.80 + f * 0.20),
     );
     eventCount += habitResult.events;
 
@@ -146,6 +177,16 @@ class SeedData {
       habitEntries: habitResult.entries,
       elapsedMs: stopwatch.elapsedMilliseconds,
     );
+  }
+
+  /// Seeds notification and digest settings per POLISH §11 / §10.4.
+  Future<void> _seedSettings() async {
+    final settingsRepo = SettingsRepository(db: _db);
+    await settingsRepo.setBool('reminders_enabled', true);
+    await settingsRepo.setBool('digest_enabled', true);
+    await settingsRepo.set('digest_times_min', [540]); // 09:00
+    await settingsRepo.setBool('habit_digest_enabled', true);
+    await settingsRepo.setInt('habit_digest_time_min', 1200); // 20:00
   }
 
   Future<List<String>> _insertProjects() async {
@@ -168,12 +209,14 @@ class SeedData {
   }
 
   /// Builds one day's sessions and their events. Returns the session count.
-  int _buildDay(
-    String date,
-    List<String> projectIds,
-    List<EventsCompanion> events,
-    List<FocusSessionsCompanion> sessions,
-  ) {
+  int _buildDay({
+    required String date,
+    required int dayOffset,
+    required List<String> projectIds,
+    required List<_SeededTaskInfo> availableTasks,
+    required List<EventsCompanion> events,
+    required List<FocusSessionsCompanion> sessions,
+  }) {
     // Roughly one day in eight with nothing at all — illness, travel, a week
     // off. §4.5 depends on these being genuinely absent rather than zero, and
     // §4.13 needs gaps or the heatmap is a solid block.
@@ -192,7 +235,16 @@ class SeedData {
     for (var i = 0; i < count; i++) {
       final hour = _pickHour(isWeekend: isWeekend, index: i);
       final minute = _rng.nextInt(60);
-      _buildSession(date, hour, minute, projectIds, events, sessions);
+      _buildSession(
+        date: date,
+        dayOffset: dayOffset,
+        hour: hour,
+        minute: minute,
+        projectIds: projectIds,
+        availableTasks: availableTasks,
+        events: events,
+        sessions: sessions,
+      );
       written++;
     }
     return written;
@@ -214,14 +266,16 @@ class SeedData {
     return 20 + _rng.nextInt(3); // 20–22
   }
 
-  void _buildSession(
-    String date,
-    int hour,
-    int minute,
-    List<String> projectIds,
-    List<EventsCompanion> events,
-    List<FocusSessionsCompanion> sessions,
-  ) {
+  void _buildSession({
+    required String date,
+    required int dayOffset,
+    required int hour,
+    required int minute,
+    required List<String> projectIds,
+    required List<_SeededTaskInfo> availableTasks,
+    required List<EventsCompanion> events,
+    required List<FocusSessionsCompanion> sessions,
+  }) {
     final parsed = TimeService.parseLocalDate(date);
     // The logical date is the anchor, so an hour before the 04:00 day start
     // belongs to the following calendar day. Nothing here generates those, but
@@ -236,9 +290,23 @@ class SeedData {
     final localDate = _time.computeLocalDate(startedAt);
 
     final sessionId = newId();
-    final projectId = _rng.nextDouble() < 0.25
-        ? null // §4.8's Unassigned bucket, which must never be empty in testing
-        : projectIds[_rng.nextInt(projectIds.length)];
+
+    // Link ~20% of sessions to a real active task, denormalizing its project ID
+    final _SeededTaskInfo? attachedTask;
+    final String? taskId;
+    final String? projectId;
+
+    if (availableTasks.isNotEmpty && _rng.nextDouble() < 0.20) {
+      attachedTask = availableTasks[_rng.nextInt(availableTasks.length)];
+      taskId = attachedTask.id;
+      projectId = attachedTask.projectId;
+    } else {
+      attachedTask = null;
+      taskId = null;
+      projectId = _rng.nextDouble() < 0.25
+          ? null // §4.8's Unassigned bucket, which must never be empty in testing
+          : projectIds[_rng.nextInt(projectIds.length)];
+    }
 
     // Roughly one session in twelve is open-ended (SPEC §3.1 flow mode), which
     // has no planned duration at all. Worth generating: a planned_duration_s of
@@ -262,6 +330,22 @@ class SeedData {
         ? null
         : _pickRating(hour);
 
+    // Retroactively logged session (~8% of sessions)
+    final isManual = _rng.nextDouble() < 0.08;
+    // Occasional realistic session note (~15% of sessions)
+    final note = _rng.nextDouble() < 0.15
+        ? _sessionNotes[_rng.nextInt(_sessionNotes.length)]
+        : null;
+
+    final nowMs = _time.nowUtcMs();
+    final int recordedAt;
+    if (isManual) {
+      final manualRecorded = endedAt + (10 + _rng.nextInt(110)) * 60000;
+      recordedAt = manualRecorded > nowMs ? nowMs : manualRecorded;
+    } else {
+      recordedAt = startedAt;
+    }
+
     sessions.add(FocusSessionsCompanion.insert(
       id: sessionId,
       mode: isFlow ? SessionModes.flow : SessionModes.pomodoro,
@@ -279,6 +363,9 @@ class SeedData {
       interruptionsExternal: Value(external),
       focusRating: Value(rating),
       projectId: Value(projectId),
+      taskId: Value(taskId),
+      isManual: Value(isManual),
+      note: Value(note),
       updatedAt: endedAt,
       deviceId: _deviceId,
     ));
@@ -286,6 +373,7 @@ class SeedData {
     events.add(_event(
       type: EventTypes.sessionStarted,
       occurredAt: startedAt,
+      recordedAt: recordedAt,
       localDate: localDate,
       tzId: tzId,
       tzOffsetMin: tzOffsetMin,
@@ -295,6 +383,8 @@ class SeedData {
         'mode': isFlow ? SessionModes.flow : SessionModes.pomodoro,
         'planned_duration_s': plannedS,
         if (projectId != null) 'project_id': projectId,
+        if (taskId != null) 'task_id': taskId,
+        if (isManual) 'is_manual': true,
       },
     ));
 
@@ -302,6 +392,7 @@ class SeedData {
       events.add(_event(
         type: EventTypes.sessionInterrupted,
         occurredAt: startedAt + (i + 1) * 60000,
+        recordedAt: recordedAt,
         localDate: localDate,
         tzId: tzId,
         tzOffsetMin: tzOffsetMin,
@@ -320,6 +411,7 @@ class SeedData {
           ? EventTypes.sessionAbandoned
           : EventTypes.sessionCompleted,
       occurredAt: endedAt,
+      recordedAt: isManual ? (recordedAt > endedAt ? recordedAt : endedAt) : endedAt,
       localDate: localDate,
       tzId: tzId,
       tzOffsetMin: tzOffsetMin,
@@ -329,18 +421,24 @@ class SeedData {
           ? {
               'actual_duration_s': actualS,
               'reason': AbandonReasons.userStopped,
+              if (taskId != null) 'task_id': taskId,
+              if (note != null) 'note': note,
             }
           : {
               'actual_duration_s': actualS,
               if (rating != null) 'focus_rating': rating,
+              if (taskId != null) 'task_id': taskId,
+              if (note != null) 'note': note,
             },
     ));
 
     if (!abandoned) {
       const breakS = 300;
+      final breakOccurred = endedAt + 1000;
       events.add(_event(
         type: EventTypes.breakStarted,
-        occurredAt: endedAt + 1000,
+        occurredAt: breakOccurred,
+        recordedAt: isManual ? (recordedAt > breakOccurred ? recordedAt : breakOccurred) : breakOccurred,
         localDate: localDate,
         tzId: tzId,
         tzOffsetMin: tzOffsetMin,
@@ -375,7 +473,7 @@ class SeedData {
     return value;
   }
 
-  Future<int> _insertTasks({
+  Future<_TaskSeedResult> _insertTasks({
     required int count,
     required String startDate,
     required int days,
@@ -384,6 +482,7 @@ class SeedData {
   }) async {
     var eventCount = 0;
     const chunk = 200;
+    final seededTasks = <_SeededTaskInfo>[];
 
     for (var offset = 0; offset < count; offset += chunk) {
       final tasks = <TasksCompanion>[];
@@ -417,6 +516,13 @@ class SeedData {
             : 0;
         final completedDayOffset = createdDayOffset + lagDays;
         final isDone = done && completedDayOffset < days;
+
+        seededTasks.add(_SeededTaskInfo(
+          id: taskId,
+          projectId: projectId,
+          createdDayOffset: createdDayOffset,
+          completedDayOffset: isDone ? completedDayOffset : null,
+        ));
 
         final completedAt = isDone
             ? _instantFor(
@@ -563,7 +669,7 @@ class SeedData {
       onProgress?.call(offset / count);
     }
 
-    return eventCount;
+    return _TaskSeedResult(events: eventCount, tasks: seededTasks);
   }
 
   static const _habitSpecs = [
@@ -756,34 +862,95 @@ class SeedData {
         end: lastDate,
       );
 
+      final isMilestoneHabit = spec.title == 'Meditation';
+      final milestoneThreshold = days >= 35 ? 30 : 7;
       final skipsThisMonth = <String, int>{};
 
       for (final date in scheduledDates) {
         final month = date.substring(0, 7);
-        final isToday = date == today;
         final daysFromToday = TimeService.daysBetween(date, today);
 
         var isCompleted = false;
         var isSkipped = false;
         var checkCount = 0;
 
-        if (isToday) {
-          // Today: 60% chance done, 40% pending so user sees pending habits on Today screen
-          if (_rng.nextDouble() < 0.6) {
+        if (isMilestoneHabit) {
+          // Guaranteed milestone streak (e.g. exactly 30 days) ending today.
+          if (daysFromToday == 0) {
+            // Today: completed to reach the milestone threshold
             isCompleted = true;
             checkCount = spec.targetCount;
-          }
-        } else if (daysFromToday <= 14) {
-          // Recent 2 weeks: 95% completion to ensure active habits have high current streaks
-          final r = _rng.nextDouble();
-          if (r < 0.95) {
-            isCompleted = true;
-            checkCount = spec.targetCount;
-          } else {
+          } else if (daysFromToday == 2 || daysFromToday == 4) {
+            // Days 2 & 4: excused rest days (freeze used) in the current month.
+            // These protect & extend the streak, while allowing the momentum strip
+            // to show non-completed days.
             isSkipped = true;
             checkCount = 0;
+          } else if (daysFromToday > 0 && daysFromToday < milestoneThreshold) {
+            // All other days within the milestone window: completed
+            isCompleted = true;
+            checkCount = spec.targetCount;
+          } else if (daysFromToday == milestoneThreshold) {
+            // Milestone miss day: exactly breaks the streak at milestoneThreshold.
+            // Absence is miss: no entry written.
+            continue;
+          } else {
+            // Historical baseline before the milestone streak
+            final r = _rng.nextDouble();
+            if (r < spec.completionRate) {
+              isCompleted = true;
+              checkCount = spec.targetCount;
+            } else if (r < spec.completionRate + spec.skipRate) {
+              isSkipped = true;
+              checkCount = 0;
+            } else {
+              continue;
+            }
+          }
+        } else if (daysFromToday == 0) {
+          // Today for all other habits:
+          // "Drink water" gets a genuine partial progress state (3 of 8 glasses)
+          // Other habits remain pending (0 of target) so Today shows partial cairn stones
+          if (spec.targetCount > 1) {
+            checkCount = 3;
+            isCompleted = false;
+            isSkipped = false;
+          } else {
+            // Pending for today: absence is pending
+            continue;
+          }
+        } else if (daysFromToday == 2 || daysFromToday == 4) {
+          // Days 2 and 4 ago: forced non-completion across all habits.
+          // Combined with Meditation's rest days, this guarantees at least 1-2 days
+          // in the current week show as NOT completed on Today's momentum strip.
+          if (spec.targetCount > 1 && _rng.nextDouble() < 0.60) {
+            // Count habit gets partial count (e.g. 2-7 glasses), which is still a miss
+            checkCount = 1 + _rng.nextInt(spec.targetCount - 1);
+          } else {
+            // Miss: no row written
+            continue;
+          }
+        } else if (daysFromToday <= 14) {
+          // Recent 2 weeks: natural baseline (~78% completion, ~6% skip, ~16% miss)
+          // instead of the old artificial 95% override, keeping Week/30D Stats realistic.
+          final r = _rng.nextDouble();
+          final recentRate = (spec.completionRate * 0.92).clamp(0.74, 0.82);
+          if (r < recentRate) {
+            isCompleted = true;
+            checkCount = spec.targetCount;
+          } else if (r < recentRate + spec.skipRate) {
+            isSkipped = true;
+            checkCount = 0;
+          } else {
+            // Missed! Count habits get partial progress 60% of the time
+            if (spec.targetCount > 1 && _rng.nextDouble() < 0.60) {
+              checkCount = 1 + _rng.nextInt(spec.targetCount - 1);
+            } else {
+              continue;
+            }
           }
         } else {
+          // Historical span (> 14 days ago)
           final r = _rng.nextDouble();
           if (r < spec.completionRate) {
             isCompleted = true;
@@ -792,8 +959,8 @@ class SeedData {
             isSkipped = true;
             checkCount = 0;
           } else {
-            // Missed! For count habits (water), 15% partial count
-            if (spec.targetCount > 1 && _rng.nextDouble() < 0.15) {
+            // Missed! For count habits (water), 60% partial count
+            if (spec.targetCount > 1 && _rng.nextDouble() < 0.60) {
               checkCount = 1 + _rng.nextInt(spec.targetCount - 1);
             } else {
               // Absence is miss (SPEC §10.1): no row written
@@ -959,14 +1126,14 @@ class SeedData {
     required Map<String, Object?> payload,
     String? subjectType,
     String? subjectId,
+    int? recordedAt,
   }) {
     return EventsCompanion.insert(
       id: newId(),
       type: type,
       occurredAt: occurredAt,
-      // Equal to occurredAt: this is not a manual entry (§6), it is a session
-      // that was recorded as it happened.
-      recordedAt: occurredAt,
+      // Equal to occurredAt for real-time events; set later for retroactive/manual sessions.
+      recordedAt: recordedAt ?? occurredAt,
       localDate: localDate,
       tzId: tzId,
       tzOffsetMin: tzOffsetMin,
@@ -982,8 +1149,9 @@ class SeedData {
   /// Sits beside [generate] on purpose. A seeder without a one-tap way back is
   /// a seeder nobody dares run twice.
   ///
-  /// `settings` is left alone so the device id, theme and daily goal survive —
-  /// losing those makes the app look broken rather than empty.
+  /// `settings` is left alone so the device id, theme, daily goal, and
+  /// reminder configurations survive — losing those makes the app look broken
+  /// rather than empty.
   Future<void> wipe() async {
     await _db.transaction(() async {
       await _db.delete(_db.events).go();
@@ -999,6 +1167,30 @@ class SeedData {
       await _db.delete(_db.timerStates).go();
     });
   }
+}
+
+class _TaskSeedResult {
+  const _TaskSeedResult({
+    required this.events,
+    required this.tasks,
+  });
+
+  final int events;
+  final List<_SeededTaskInfo> tasks;
+}
+
+class _SeededTaskInfo {
+  const _SeededTaskInfo({
+    required this.id,
+    required this.projectId,
+    required this.createdDayOffset,
+    required this.completedDayOffset,
+  });
+
+  final String id;
+  final String? projectId;
+  final int createdDayOffset;
+  final int? completedDayOffset;
 }
 
 /// What a [SeedData.generate] run produced.

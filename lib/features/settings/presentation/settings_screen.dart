@@ -4,6 +4,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/widgets/cairn_card.dart';
 import '../../../data/providers/database_provider.dart';
 import '../../../theme/app_theme.dart';
 import '../../backup/presentation/backup_restore_screen.dart';
@@ -12,13 +13,14 @@ import '../../tasks/presentation/archived_tasks_screen.dart';
 
 /// The Settings screen per POLISH §4 and §2.
 ///
-/// Organized in 6 grouped sections:
+/// Organized in 7 grouped sections:
 /// 1. Focus (Daily goal, Session length, Break length, Long break, Sessions before long break, explanations)
-/// 2. Day & week (Day start offset + explanation, Week start)
-/// 3. Appearance (System / Light / Dark theme)
-/// 4. Notifications (Permission status & system settings link)
-/// 5. Data (Archived tasks entry point)
-/// 6. About (Version, from beetlebyte, Open-source licenses)
+/// 2. Reminders (Task reminders, Daily digest, Habit check-in)
+/// 3. Day & week (Day start offset + explanation, Week start)
+/// 4. Appearance (System / Light / Dark theme)
+/// 5. Notifications (Permission status & system settings link)
+/// 6. Data (Backup, Sync & Accounts, Archived tasks)
+/// 7. About (Version, from beetlebyte, Open-source licenses)
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -94,6 +96,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
     final defaultOffsets = ref.watch(defaultTaskReminderOffsetsMinProvider);
     final digestEnabled = ref.watch(digestEnabledProvider);
     final digestTimes = ref.watch(digestTimesMinProvider);
+    final habitDigestEnabled = ref.watch(habitDigestEnabledProvider);
+    final habitDigestTime = ref.watch(habitDigestTimeMinProvider);
 
     final dayStartTimeStr = _formatOffsetTime(context, dayStartOffset);
 
@@ -107,434 +111,562 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
           children: [
             // ── 1. Focus ─────────────────────────────────────────────────────
             _buildSectionHeader(context, 'Focus'),
-            ListTile(
-              title: const Text('Daily goal'),
-              subtitle: Text('$dailyGoalMinutes min'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => _showSliderDialog(
-                context: context,
-                title: 'Daily goal',
-                currentValue: dailyGoalMinutes.toDouble(),
-                min: 5,
-                max: 480,
-                step: 5,
-                unit: 'min',
-                onChanged: (val) {
-                  ref.read(dailyGoalMinutesProvider.notifier).setGoal(val.round());
-                },
-              ),
-            ),
-            ListTile(
-              title: const Text('Session length'),
-              subtitle: Text('${sessionLengthS ~/ 60} min'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => _showSliderDialog(
-                context: context,
-                title: 'Session length',
-                currentValue: (sessionLengthS ~/ 60).toDouble(),
-                min: 5,
-                max: 120,
-                step: 5,
-                unit: 'min',
-                onChanged: (val) {
-                  ref.read(sessionLengthSecondsProvider.notifier).setDuration(val.round() * 60);
-                },
-              ),
-            ),
-            ListTile(
-              title: const Text('Break length'),
-              subtitle: Text('${breakLengthS ~/ 60} min'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => _showSliderDialog(
-                context: context,
-                title: 'Break length',
-                currentValue: (breakLengthS ~/ 60).toDouble(),
-                min: 1,
-                max: 30,
-                step: 1,
-                unit: 'min',
-                onChanged: (val) {
-                  ref.read(breakLengthSecondsProvider.notifier).setDuration(val.round() * 60);
-                },
-              ),
-            ),
-            ListTile(
-              title: const Text('Long break length'),
-              subtitle: Text('${longBreakLengthS ~/ 60} min'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => _showSliderDialog(
-                context: context,
-                title: 'Long break length',
-                currentValue: (longBreakLengthS ~/ 60).toDouble(),
-                min: 1,
-                max: 60,
-                step: 1,
-                unit: 'min',
-                onChanged: (val) {
-                  ref.read(longBreakLengthSecondsProvider.notifier).setDuration(val.round() * 60);
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Sessions before a long break',
-                    style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment(value: 2, label: Text('2')),
-                        ButtonSegment(value: 3, label: Text('3')),
-                        ButtonSegment(value: 4, label: Text('4')),
-                        ButtonSegment(value: 5, label: Text('5')),
-                      ],
-                      selected: {
-                        [2, 3, 4, 5].contains(sessionsBeforeLongBreak)
-                            ? sessionsBeforeLongBreak
-                            : 4
-                      },
-                      showSelectedIcon: false,
-                      onSelectionChanged: (selected) {
-                        ref.read(sessionsBeforeLongBreakProvider.notifier).setCount(selected.first);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            _buildExplanation(
-              context,
-              "Stopped sessions don't count toward your totals. If you stop at 24 minutes, that time isn't added. Only sessions you finish are counted.",
-            ),
-            const SizedBox(height: 12),
-            _buildExplanation(
-              context,
-              "Today can't break your streak. Your streak only looks at days that are already over, so it won't reset just because you haven't started yet today.",
-            ),
-
-            // ── Reminders ────────────────────────────────────────────────────
-            _buildSectionHeader(context, 'Reminders'),
-            SwitchListTile(
-              title: const Text('Reminders'),
-              subtitle: const Text('Notify you before tasks are due'),
-              value: remindersEnabled,
-              onChanged: (val) {
-                ref.read(remindersEnabledProvider.notifier).setEnabled(val);
-                ref.read(reminderServiceProvider).reconcileAll();
-              },
-            ),
-            if (remindersEnabled) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            CairnCard(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                clipBehavior: Clip.antiAlias,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Default reminders for new tasks',
-                      style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
+                    ListTile(
+                      title: const Text('Daily goal'),
+                      subtitle: Text('$dailyGoalMinutes min'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _showSliderDialog(
+                        context: context,
+                        title: 'Daily goal',
+                        currentValue: dailyGoalMinutes.toDouble(),
+                        min: 5,
+                        max: 480,
+                        step: 5,
+                        unit: 'min',
+                        onChanged: (val) {
+                          ref.read(dailyGoalMinutesProvider.notifier).setGoal(val.round());
+                        },
+                      ),
                     ),
-                    Text(
-                      'How many, and how long before a timed task is due. '
-                      'Each task can change its own.',
-                      style: textTheme.bodySmall?.copyWith(color: tokens.textMuted),
+                    ListTile(
+                      title: const Text('Session length'),
+                      subtitle: Text('${sessionLengthS ~/ 60} min'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _showSliderDialog(
+                        context: context,
+                        title: 'Session length',
+                        currentValue: (sessionLengthS ~/ 60).toDouble(),
+                        min: 5,
+                        max: 120,
+                        step: 5,
+                        unit: 'min',
+                        onChanged: (val) {
+                          ref.read(sessionLengthSecondsProvider.notifier).setDuration(val.round() * 60);
+                        },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Break length'),
+                      subtitle: Text('${breakLengthS ~/ 60} min'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _showSliderDialog(
+                        context: context,
+                        title: 'Break length',
+                        currentValue: (breakLengthS ~/ 60).toDouble(),
+                        min: 1,
+                        max: 30,
+                        step: 1,
+                        unit: 'min',
+                        onChanged: (val) {
+                          ref.read(breakLengthSecondsProvider.notifier).setDuration(val.round() * 60);
+                        },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Long break length'),
+                      subtitle: Text('${longBreakLengthS ~/ 60} min'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _showSliderDialog(
+                        context: context,
+                        title: 'Long break length',
+                        currentValue: (longBreakLengthS ~/ 60).toDouble(),
+                        min: 1,
+                        max: 60,
+                        step: 1,
+                        unit: 'min',
+                        onChanged: (val) {
+                          ref.read(longBreakLengthSecondsProvider.notifier).setDuration(val.round() * 60);
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Sessions before a long break',
+                            style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: SegmentedButton<int>(
+                              segments: const [
+                                ButtonSegment(value: 2, label: Text('2')),
+                                ButtonSegment(value: 3, label: Text('3')),
+                                ButtonSegment(value: 4, label: Text('4')),
+                                ButtonSegment(value: 5, label: Text('5')),
+                              ],
+                              selected: {
+                                [2, 3, 4, 5].contains(sessionsBeforeLongBreak)
+                                    ? sessionsBeforeLongBreak
+                                    : 4
+                              },
+                              showSelectedIcon: false,
+                              onSelectionChanged: (selected) {
+                                ref.read(sessionsBeforeLongBreakProvider.notifier).setCount(selected.first);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final minutes in defaultOffsets)
-                          InputChip(
-                            label: Text(_formatOffsetLabel(minutes)),
-                            onDeleted: defaultOffsets.length <= 1
-                                ? null
-                                : () {
+                    _buildExplanation(
+                      context,
+                      "Stopped sessions don't count toward your totals. If you stop at 24 minutes, that time isn't added. Only sessions you finish are counted.",
+                    ),
+                    const SizedBox(height: 12),
+                    _buildExplanation(
+                      context,
+                      "Today can't break your streak. Your streak only looks at days that are already over, so it won't reset just because you haven't started yet today.",
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── 2. Reminders ─────────────────────────────────────────────────
+            _buildSectionHeader(context, 'Reminders'),
+            CairnCard(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Reminders'),
+                      subtitle: const Text('Notify you before tasks are due'),
+                      value: remindersEnabled,
+                      onChanged: (val) {
+                        ref.read(remindersEnabledProvider.notifier).setEnabled(val);
+                        ref.read(reminderServiceProvider).reconcileAll();
+                      },
+                    ),
+                    if (remindersEnabled) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Default reminders for new tasks',
+                              style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
+                            ),
+                            Text(
+                              'How many, and how long before a timed task is due. '
+                              'Each task can change its own.',
+                              style: textTheme.bodySmall?.copyWith(color: tokens.textMuted),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final minutes in defaultOffsets)
+                                  InputChip(
+                                    label: Text(_formatOffsetLabel(minutes)),
+                                    onDeleted: defaultOffsets.length <= 1
+                                        ? null
+                                        : () {
+                                            ref
+                                                .read(defaultTaskReminderOffsetsMinProvider
+                                                    .notifier)
+                                                .setOffsets([
+                                              for (final m in defaultOffsets)
+                                                if (m != minutes) m
+                                            ]);
+                                            ref.read(reminderServiceProvider).reconcileAll();
+                                          },
+                                  ),
+                                if (defaultOffsets.length <
+                                    DefaultTaskReminderOffsetsMinNotifier.maxOffsets)
+                                  ActionChip(
+                                    avatar: const Icon(Icons.add_rounded, size: 18),
+                                    label: const Text('Add'),
+                                    onPressed: () async {
+                                      final selected = await _pickOffsetMinutes(context);
+                                      if (selected == null) return;
+                                      ref
+                                          .read(defaultTaskReminderOffsetsMinProvider
+                                              .notifier)
+                                          .setOffsets([...defaultOffsets, selected]);
+                                      ref.read(reminderServiceProvider).reconcileAll();
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      SwitchListTile(
+                        title: const Text('Daily digest'),
+                        subtitle: const Text(
+                          "What's due today and overdue, for all-day tasks with no "
+                          'specific time',
+                        ),
+                        value: digestEnabled,
+                        onChanged: (val) {
+                          ref.read(digestEnabledProvider.notifier).setEnabled(val);
+                          ref.read(reminderServiceProvider).reconcileAll();
+                        },
+                      ),
+                      if (digestEnabled)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final minutes in digestTimes)
+                                InputChip(
+                                  avatar: const Icon(Icons.schedule_rounded, size: 18),
+                                  label: Text(_formatOffsetTime(context, minutes)),
+                                  onDeleted: digestTimes.length <= 1
+                                      ? null
+                                      : () {
+                                          ref.read(digestTimesMinProvider.notifier).setTimes([
+                                            for (final m in digestTimes)
+                                              if (m != minutes) m
+                                          ]);
+                                          ref.read(reminderServiceProvider).reconcileAll();
+                                        },
+                                ),
+                              if (digestTimes.length < DigestTimesMinNotifier.maxTimes)
+                                ActionChip(
+                                  avatar: const Icon(Icons.add_rounded, size: 18),
+                                  label: const Text('Add time'),
+                                  onPressed: () async {
+                                    final picked = await showTimePicker(
+                                      context: context,
+                                      initialTime: TimeOfDay.now(),
+                                    );
+                                    if (picked == null) return;
+                                    final minutes = picked.hour * 60 + picked.minute;
+                                    if (digestTimes.contains(minutes)) return;
                                     ref
-                                        .read(defaultTaskReminderOffsetsMinProvider
-                                            .notifier)
-                                        .setOffsets([
-                                      for (final m in defaultOffsets)
-                                        if (m != minutes) m
-                                    ]);
+                                        .read(digestTimesMinProvider.notifier)
+                                        .setTimes([...digestTimes, minutes]);
                                     ref.read(reminderServiceProvider).reconcileAll();
                                   },
+                                ),
+                            ],
                           ),
-                        if (defaultOffsets.length <
-                            DefaultTaskReminderOffsetsMinNotifier.maxOffsets)
-                          ActionChip(
-                            avatar: const Icon(Icons.add_rounded, size: 18),
-                            label: const Text('Add'),
-                            onPressed: () async {
-                              final selected = await _pickOffsetMinutes(context);
-                              if (selected == null) return;
-                              ref
-                                  .read(defaultTaskReminderOffsetsMinProvider
-                                      .notifier)
-                                  .setOffsets([...defaultOffsets, selected]);
-                              ref.read(reminderServiceProvider).reconcileAll();
-                            },
+                        ),
+                      SwitchListTile(
+                        title: const Text('Habit check-in'),
+                        subtitle: const Text(
+                          'One nudge a day about your habits — your streak, a new '
+                          'week, or a rest day that saved it',
+                        ),
+                        value: habitDigestEnabled,
+                        onChanged: (val) {
+                          ref.read(habitDigestEnabledProvider.notifier).setEnabled(val);
+                          ref.read(reminderServiceProvider).reconcileAll();
+                        },
+                      ),
+                      if (habitDigestEnabled)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: InputChip(
+                              avatar: const Icon(Icons.schedule_rounded, size: 18),
+                              label: Text(_formatOffsetTime(context, habitDigestTime)),
+                              onPressed: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: TimeOfDay(
+                                    hour: habitDigestTime ~/ 60,
+                                    minute: habitDigestTime % 60,
+                                  ),
+                                );
+                                if (picked == null) return;
+                                ref
+                                    .read(habitDigestTimeMinProvider.notifier)
+                                    .setTime(picked.hour * 60 + picked.minute);
+                                ref.read(reminderServiceProvider).reconcileAll();
+                              },
+                            ),
                           ),
-                      ],
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // ── 3. Day & Week ────────────────────────────────────────────────
+            _buildSectionHeader(context, 'Day & week'),
+            CairnCard(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ListTile(
+                      title: const Text('Day starts at'),
+                      subtitle: Text(dayStartTimeStr),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () async {
+                        final currentHour = dayStartOffset ~/ 60;
+                        final currentMinute = dayStartOffset % 60;
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay(hour: currentHour, minute: currentMinute),
+                        );
+                        if (picked != null) {
+                          final newOffset = picked.hour * 60 + picked.minute;
+                          ref.read(dayStartOffsetProvider.notifier).setOffset(newOffset);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    _buildExplanation(
+                      context,
+                      'Your day starts at $dayStartTimeStr, not midnight. A session you finish at 1am counts toward the previous day, so a late night doesn\'t split your work across two days or break a streak. Changing this affects new sessions only — your history stays as it was recorded.',
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Week starts on',
+                            style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: SegmentedButton<int>(
+                              segments: const [
+                                ButtonSegment(
+                                  value: DateTime.monday,
+                                  label: Text('Mon'),
+                                ),
+                                ButtonSegment(
+                                  value: DateTime.sunday,
+                                  label: Text('Sun'),
+                                ),
+                                ButtonSegment(
+                                  value: DateTime.saturday,
+                                  label: Text('Sat'),
+                                ),
+                              ],
+                              selected: {
+                                [DateTime.monday, DateTime.sunday, DateTime.saturday].contains(weekStart)
+                                    ? weekStart
+                                    : DateTime.monday
+                              },
+                              showSelectedIcon: false,
+                              onSelectionChanged: (selected) {
+                                ref.read(weekStartProvider.notifier).setWeekStart(selected.first);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── 4. Appearance ────────────────────────────────────────────────
+            _buildSectionHeader(context, 'Appearance'),
+            CairnCard(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 0),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Theme',
+                        style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<ThemeMode>(
+                          segments: const [
+                            ButtonSegment(
+                              value: ThemeMode.system,
+                              label: Text('System'),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.light,
+                              label: Text('Light'),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.dark,
+                              label: Text('Dark'),
+                            ),
+                          ],
+                          selected: {themeMode},
+                          showSelectedIcon: false,
+                          onSelectionChanged: (selected) {
+                            ref.read(themeModeProvider.notifier).setThemeMode(selected.first);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 5. Notifications ─────────────────────────────────────────────
+            _buildSectionHeader(context, 'Notifications'),
+            CairnCard(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                clipBehavior: Clip.antiAlias,
+                child: ListTile(
+                  title: const Text('Notifications'),
+                  subtitle: Text(
+                    _notificationGranted
+                        ? 'On'
+                        : 'Timer notifications are off. Without them you won\'t be told when a session ends while the app is closed.',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: _notificationGranted ? tokens.textSecondary : tokens.warning,
+                    ),
+                  ),
+                  trailing: _notificationGranted
+                      ? const Icon(Icons.check_circle_outline_rounded, color: Colors.green)
+                      : const Icon(Icons.chevron_right_rounded),
+                  onTap: _notificationGranted
+                      ? null
+                      : () async {
+                          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+                            await FlutterForegroundTask.requestNotificationPermission();
+                            await _checkNotificationPermission();
+                          }
+                        },
+                ),
+              ),
+            ),
+
+            // ── 6. Data ──────────────────────────────────────────────────────
+            _buildSectionHeader(context, 'Data'),
+            CairnCard(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.shield_outlined),
+                      title: const Text('Backup, Sync & Accounts'),
+                      subtitle: const Text('Local encrypted vault, CSV export & Cloud account'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const BackupRestoreScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.archive_outlined),
+                      title: const Text('Archived tasks'),
+                      subtitle: const Text('View and manage archived tasks'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ArchivedTasksScreen(),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
-              SwitchListTile(
-                title: const Text('Daily digest'),
-                subtitle: const Text(
-                  "What's due today and overdue, for all-day tasks with no "
-                  'specific time',
-                ),
-                value: digestEnabled,
-                onChanged: (val) {
-                  ref.read(digestEnabledProvider.notifier).setEnabled(val);
-                  ref.read(reminderServiceProvider).reconcileAll();
-                },
-              ),
-              if (digestEnabled)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final minutes in digestTimes)
-                        InputChip(
-                          avatar: const Icon(Icons.schedule_rounded, size: 18),
-                          label: Text(_formatOffsetTime(context, minutes)),
-                          onDeleted: digestTimes.length <= 1
-                              ? null
-                              : () {
-                                  ref.read(digestTimesMinProvider.notifier).setTimes([
-                                    for (final m in digestTimes)
-                                      if (m != minutes) m
-                                  ]);
-                                  ref.read(reminderServiceProvider).reconcileAll();
-                                },
-                        ),
-                      if (digestTimes.length < DigestTimesMinNotifier.maxTimes)
-                        ActionChip(
-                          avatar: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('Add time'),
-                          onPressed: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.now(),
-                            );
-                            if (picked == null) return;
-                            final minutes = picked.hour * 60 + picked.minute;
-                            if (digestTimes.contains(minutes)) return;
-                            ref
-                                .read(digestTimesMinProvider.notifier)
-                                .setTimes([...digestTimes, minutes]);
-                            ref.read(reminderServiceProvider).reconcileAll();
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-            ],
-
-            // ── 2. Day & Week ────────────────────────────────────────────────
-            _buildSectionHeader(context, 'Day & week'),
-            ListTile(
-              title: const Text('Day starts at'),
-              subtitle: Text(dayStartTimeStr),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () async {
-                final currentHour = dayStartOffset ~/ 60;
-                final currentMinute = dayStartOffset % 60;
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay(hour: currentHour, minute: currentMinute),
-                );
-                if (picked != null) {
-                  final newOffset = picked.hour * 60 + picked.minute;
-                  ref.read(dayStartOffsetProvider.notifier).setOffset(newOffset);
-                }
-              },
-            ),
-            const SizedBox(height: 4),
-            _buildExplanation(
-              context,
-              'Your day starts at $dayStartTimeStr, not midnight. A session you finish at 1am counts toward the previous day, so a late night doesn\'t split your work across two days or break a streak. Changing this affects new sessions only — your history stays as it was recorded.',
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Week starts on',
-                    style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment(
-                          value: DateTime.monday,
-                          label: Text('Mon'),
-                        ),
-                        ButtonSegment(
-                          value: DateTime.sunday,
-                          label: Text('Sun'),
-                        ),
-                        ButtonSegment(
-                          value: DateTime.saturday,
-                          label: Text('Sat'),
-                        ),
-                      ],
-                      selected: {
-                        [DateTime.monday, DateTime.sunday, DateTime.saturday].contains(weekStart)
-                            ? weekStart
-                            : DateTime.monday
-                      },
-                      showSelectedIcon: false,
-                      onSelectionChanged: (selected) {
-                        ref.read(weekStartProvider.notifier).setWeekStart(selected.first);
-                      },
-                    ),
-                  ),
-                ],
-              ),
             ),
 
-            // ── 3. Appearance ────────────────────────────────────────────────
-            _buildSectionHeader(context, 'Appearance'),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Theme',
-                    style: textTheme.bodyLarge?.copyWith(color: colors.onSurface),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<ThemeMode>(
-                      segments: const [
-                        ButtonSegment(
-                          value: ThemeMode.system,
-                          label: Text('System'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeMode.light,
-                          label: Text('Light'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeMode.dark,
-                          label: Text('Dark'),
-                        ),
-                      ],
-                      selected: {themeMode},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (selected) {
-                        ref.read(themeModeProvider.notifier).setThemeMode(selected.first);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── 4. Notifications ─────────────────────────────────────────────
-            _buildSectionHeader(context, 'Notifications'),
-            ListTile(
-              title: const Text('Notifications'),
-              subtitle: Text(
-                _notificationGranted
-                    ? 'On'
-                    : 'Timer notifications are off. Without them you won\'t be told when a session ends while the app is closed.',
-                style: textTheme.bodySmall?.copyWith(
-                  color: _notificationGranted ? tokens.textSecondary : tokens.warning,
-                ),
-              ),
-              trailing: _notificationGranted
-                  ? const Icon(Icons.check_circle_outline_rounded, color: Colors.green)
-                  : const Icon(Icons.chevron_right_rounded),
-              onTap: _notificationGranted
-                  ? null
-                  : () async {
-                      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-                        await FlutterForegroundTask.requestNotificationPermission();
-                        await _checkNotificationPermission();
-                      }
-                    },
-            ),
-
-            // ── 5. Data ──────────────────────────────────────────────────────
-            _buildSectionHeader(context, 'Data'),
-            ListTile(
-              leading: const Icon(Icons.shield_outlined),
-              title: const Text('Backup, Sync & Accounts'),
-              subtitle: const Text('Local encrypted vault, CSV export & Cloud account'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const BackupRestoreScreen(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.archive_outlined),
-              title: const Text('Archived tasks'),
-              subtitle: const Text('View and manage archived tasks'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ArchivedTasksScreen(),
-                  ),
-                );
-              },
-            ),
-
-            // ── 6. About ─────────────────────────────────────────────────────
+            // ── 7. About ─────────────────────────────────────────────────────
             _buildSectionHeader(context, 'About'),
-            ListTile(
-              title: const Text('Version'),
-              subtitle: Text(
-                _packageInfo != null
-                    ? '${_packageInfo!.version} (${_packageInfo!.buildNumber})'
-                    : '1.0.0 (1)',
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Text(
-                'from beetlebyte',
-                style: textTheme.bodyMedium?.copyWith(
-                  color: tokens.textSecondary,
-                  fontWeight: FontWeight.w500,
+            CairnCard(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: const Text('Version'),
+                      subtitle: Text(
+                        _packageInfo != null
+                            ? '${_packageInfo!.version} (${_packageInfo!.buildNumber})'
+                            : '1.0.0 (1)',
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'from beetlebyte',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: tokens.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Open-source licences'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () {
+                        showLicensePage(
+                          context: context,
+                          applicationName: 'Cairn',
+                          applicationVersion: _packageInfo != null
+                              ? '${_packageInfo!.version} (${_packageInfo!.buildNumber})'
+                              : '1.0.0 (1)',
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
-            ),
-            ListTile(
-              title: const Text('Open-source licences'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                showLicensePage(
-                  context: context,
-                  applicationName: 'Cairn',
-                  applicationVersion: _packageInfo != null
-                      ? '${_packageInfo!.version} (${_packageInfo!.buildNumber})'
-                      : '1.0.0 (1)',
-                );
-              },
             ),
           ],
         ),
@@ -543,18 +675,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
     return Padding(
       padding: const EdgeInsets.only(left: 16, top: 24, bottom: 8),
-      child: Text(
-        title,
-        style: textTheme.titleSmall?.copyWith(
-          color: colors.primary,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      child: CardChrome.sectionLabel(context, title),
     );
   }
 
@@ -639,7 +762,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                     Text(
                       '${tempValue.round()} $unit',
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.primary,
+                            color: context.colors.primary,
                             fontWeight: FontWeight.w700,
                           ),
                     ),

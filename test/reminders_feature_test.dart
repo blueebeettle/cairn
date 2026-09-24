@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +13,7 @@ import 'package:habit_tracker/data/dev/seed_data.dart';
 import 'package:habit_tracker/data/providers/database_provider.dart';
 import 'package:habit_tracker/data/repositories/events_repository.dart';
 import 'package:habit_tracker/data/repositories/reminder_config_repository.dart';
+import 'package:habit_tracker/data/repositories/habits_repository.dart';
 import 'package:habit_tracker/data/repositories/settings_repository.dart';
 import 'package:habit_tracker/data/repositories/tasks_repository.dart';
 import 'package:habit_tracker/data/repositories/timer_repository.dart';
@@ -553,6 +556,326 @@ void main() {
     });
   });
 
+  group('Part B3 — Habit digest', () {
+    // Its own harness rather than the file-level one: the digest's tones are
+    // about what happened yesterday and how long a streak runs, and
+    // `createHabit` anchors a habit on the day it is created — so a habit
+    // needs to be made in the past and the clock walked forward before it has
+    // any history to describe. The file-level `timeService` is on the real
+    // clock and cannot do that.
+    late AppDatabase hdDb;
+    late SettingsRepository hdSettings;
+    late FakeFlutterLocalNotificationsPlugin hdPlugin;
+    late HabitsRepository hdHabits;
+    late ReminderService hdService;
+    late int nowMs;
+
+    const created = '2026-09-09'; // Wednesday
+    const monday = '2026-09-14'; // the Monday that starts the week
+    const wednesday = '2026-09-16';
+
+    int at(String localDate, int hour) {
+      final d = TimeService.parseLocalDate(localDate);
+      return DateTime.utc(d.year, d.month, d.day, hour).millisecondsSinceEpoch;
+    }
+
+    /// Moves the harness's clock to noon on [localDate].
+    void setNow(String localDate) => nowMs = at(localDate, 12);
+
+    void buildService({int? randomSeed}) {
+      hdService = ReminderService(
+        db: hdDb,
+        settingsRepo: hdSettings,
+        timeService: TimeService(
+          localize: (ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
+          offsetMinutesAt: (_) => 0,
+          tzIdProvider: () => 'UTC',
+          nowProvider: () => nowMs,
+        ),
+        plugin: hdPlugin,
+        habitsRepository: hdHabits,
+        random: randomSeed == null ? null : Random(randomSeed),
+      );
+    }
+
+    setUp(() async {
+      hdDb = AppDatabase(NativeDatabase.memory());
+      hdSettings = SettingsRepository(db: hdDb);
+      hdPlugin = FakeFlutterLocalNotificationsPlugin();
+      nowMs = at(created, 12);
+      final time = TimeService(
+        localize: (ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
+        offsetMinutesAt: (_) => 0,
+        tzIdProvider: () => 'UTC',
+        nowProvider: () => nowMs,
+      );
+      hdHabits = HabitsRepository(
+        db: hdDb,
+        eventsRepository:
+            EventsRepository(db: hdDb, timeService: time, deviceId: 'test'),
+        timeService: time,
+        deviceId: 'test',
+      );
+      buildService();
+    });
+
+    tearDown(() async => hdDb.close());
+
+    ZonedScheduleCall? scheduled() =>
+        hdPlugin.scheduledNotifications[ReminderService.habitDigestNotificationId];
+
+    /// A daily habit created on [created] and checked off every day from then
+    /// until the day before [today], so on [today] it has a live streak and is
+    /// still pending.
+    Future<String> seedStreak({String today = wednesday}) async {
+      final id = await hdHabits.createHabit(
+        title: 'Read',
+        scheduleRule: 'FREQ=DAILY',
+      );
+      for (var date = created;
+          date.compareTo(today) < 0;
+          date = TimeService.addDays(date, 1)) {
+        await hdHabits.check(id, localDate: date);
+      }
+      setNow(today);
+      return id;
+    }
+
+    test('Off by default: reconcileAll schedules nothing at the habit digest id',
+        () async {
+      await seedStreak();
+
+      await hdService.reconcileAll();
+
+      expect(scheduled(), isNull);
+    });
+
+    test('Enabled with a live streak and something open schedules one digest',
+        () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled(), isNotNull);
+      expect(scheduled()!.title, equals('Cairn'));
+      expect(scheduled()!.payload, equals('habit_digest'));
+      // Which of the three streak variants comes out is random by design, so
+      // assert on what they all carry: the streak length and the open count.
+      expect(scheduled()!.body, contains('7'));
+      expect(scheduled()!.body, contains('1 habit'));
+    });
+
+    test('Uses exactly one fixed id, never the shared counter band', () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(hdPlugin.scheduledNotifications.keys,
+          equals({ReminderService.habitDigestNotificationId}));
+      expect(ReminderService.habitDigestNotificationId, equals(7));
+    });
+
+    test('Fires at the configured time, in minutes past midnight', () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+      await hdSettings.setInt('habit_digest_time_min', 7 * 60 + 30);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled()!.scheduledDate.hour, equals(7));
+      expect(scheduled()!.scheduledDate.minute, equals(30));
+      expect(
+        scheduled()!.scheduledDate.isAfter(tz.TZDateTime.now(tz.local)),
+        isTrue,
+        reason: 'a time already past today must roll to tomorrow',
+      );
+    });
+
+    test('Defaults to 20:00 when no time is configured', () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled()!.scheduledDate.hour, equals(20));
+      expect(scheduled()!.scheduledDate.minute, equals(0));
+      expect(ReminderService.defaultHabitDigestTimeMin, equals(20 * 60));
+    });
+
+    test('Nothing meaningful to say schedules no digest', () async {
+      // A habit with no history at all: no streak to cite, no freeze
+      // yesterday, and mid-week. Like the task digest with an empty due list,
+      // it stays quiet rather than saying something empty.
+      await hdHabits.createHabit(title: 'Read', scheduleRule: 'FREQ=DAILY');
+      setNow(wednesday);
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled(), isNull);
+    });
+
+    test('Everything already done today schedules no digest', () async {
+      final id = await seedStreak();
+      await hdHabits.check(id, localDate: wednesday);
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled(), isNull,
+          reason: '"0 habits are still open" is not a nudge');
+    });
+
+    test('No habits at all schedules no digest', () async {
+      setNow(wednesday);
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled(), isNull);
+    });
+
+    test('Reminders globally disabled wins over habit_digest_enabled',
+        () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+      await hdSettings.setBool('reminders_enabled', false);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled(), isNull);
+    });
+
+    test('Turning it off cancels the previously scheduled digest', () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+      await hdService.reconcileHabitDigest();
+      expect(scheduled(), isNotNull);
+
+      await hdSettings.setBool('habit_digest_enabled', false);
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled(), isNull);
+    });
+
+    test('The week-rollover tone wins on the first day of the week', () async {
+      await seedStreak(today: monday);
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled()!.body, contains('week'));
+      expect(scheduled()!.body, contains('1 habit is'));
+    });
+
+    test('A freeze used yesterday outranks both other tones', () async {
+      final id = await hdHabits.createHabit(
+        title: 'Read',
+        scheduleRule: 'FREQ=DAILY',
+      );
+      await hdHabits.check(id, localDate: created);
+      await hdHabits.check(id, localDate: '2026-09-10');
+      await hdHabits.check(id, localDate: '2026-09-11');
+      await hdHabits.check(id, localDate: '2026-09-12');
+      // Sunday excused, and Monday starts the week — the freeze still wins.
+      await hdHabits.setSkipped(id, localDate: '2026-09-13');
+      setNow(monday);
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled()!.body!.toLowerCase(), contains('freeze'));
+    });
+
+    test('The chosen variant is remembered, and the next one differs',
+        () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+      final first =
+          await hdSettings.getInt(ReminderService.habitDigestLastIndexKey);
+      expect(first, isNotNull, reason: 'the index must be persisted');
+      final firstBody = scheduled()!.body;
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled()!.body, isNot(equals(firstBody)));
+      expect(
+        await hdSettings.getInt(ReminderService.habitDigestLastIndexKey),
+        isNot(equals(first)),
+      );
+    });
+
+    test('Never repeats the immediately-previous line over many reconciles',
+        () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      String? previous;
+      for (var i = 0; i < 12; i++) {
+        await hdService.reconcileHabitDigest();
+        final body = scheduled()!.body;
+        expect(body, isNot(equals(previous)), reason: 'run $i repeated a line');
+        previous = body;
+      }
+    });
+
+    test('A stored index outside the pool is treated as nothing stored',
+        () async {
+      // A pool that shrank in a later release would otherwise leave a stale
+      // index that the modulo below could read as a valid "last used".
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+      await hdSettings.setInt(ReminderService.habitDigestLastIndexKey, 99);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled(), isNotNull);
+      final stored =
+          await hdSettings.getInt(ReminderService.habitDigestLastIndexKey);
+      expect(stored, isNotNull);
+      expect(stored, lessThan(3));
+    });
+
+    test('reconcileAll schedules it alongside the task digest', () async {
+      await seedStreak();
+      final harnessTime = TimeService(
+        localize: (ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
+        offsetMinutesAt: (_) => 0,
+        tzIdProvider: () => 'UTC',
+        nowProvider: () => nowMs,
+      );
+      final hdTasks = TasksRepository(
+        db: hdDb,
+        eventsRepository: EventsRepository(
+          db: hdDb,
+          timeService: harnessTime,
+          deviceId: 'test',
+        ),
+        timeService: harnessTime,
+      );
+      await hdTasks.createTask(
+        title: 'All-day task due today',
+        // Dated against the harness clock, not the wall clock — the digest
+        // resolves "today" through the same fake `TimeService`.
+        dueAt: at(wednesday, 10),
+        dueIsAllDay: true,
+      );
+      await hdSettings.setBool('digest_enabled', true);
+      await hdSettings.set('digest_times_min', [9 * 60]);
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileAll();
+
+      expect(hdPlugin.scheduledNotifications.containsKey(1), isTrue,
+          reason: 'the task digest still schedules');
+      expect(scheduled(), isNotNull);
+    });
+  });
+
   group('Part C — Permission Pre-Dialog & UI Controls', () {
     testWidgets('Notification permission pre-dialog shows Cairn explanation before system prompt', (tester) async {
       NotificationPermissionHelper.resetSessionPrompt();
@@ -626,6 +949,151 @@ void main() {
       expect(find.text('Notify you before tasks are due'), findsOneWidget);
       expect(find.text('Default reminders for new tasks'), findsOneWidget);
       expect(find.text('Daily digest'), findsOneWidget);
+      expect(find.text('Habit check-in'), findsOneWidget);
+    });
+
+    /// The Settings screen, scrolled down to the habit check-in row.
+    Future<void> pumpSettingsAtHabitRow(WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            settingsRepositoryProvider.overrideWithValue(settingsRepo),
+            reminderServiceProvider.overrideWithValue(reminderService),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.light().copyWith(extensions: const [AppTokens.light]),
+            home: const SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Habit check-in'),
+        200,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// The habit check-in row's switch.
+    Finder habitDigestSwitch() => find.ancestor(
+          of: find.text('Habit check-in'),
+          matching: find.byType(SwitchListTile),
+        );
+
+    testWidgets('Habit check-in is off by default and hides its time picker',
+        (tester) async {
+      await pumpSettingsAtHabitRow(tester);
+
+      expect(tester.widget<SwitchListTile>(habitDigestSwitch()).value, isFalse);
+      // 8:00 PM is the default time, but the chip only exists once the
+      // toggle is on — same convention as the daily digest's time chips.
+      expect(find.text('8:00 PM'), findsNothing);
+    });
+
+    testWidgets('Turning Habit check-in on reveals the time and persists it',
+        (tester) async {
+      await pumpSettingsAtHabitRow(tester);
+
+      await tester.tap(habitDigestSwitch());
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(habitDigestSwitch()).value, isTrue);
+      expect(find.text('8:00 PM'), findsOneWidget,
+          reason: 'the default 20:00 shows once the row is on');
+      expect(await settingsRepo.getBool('habit_digest_enabled'), isTrue);
+    });
+
+    testWidgets('Turning it back off hides the time and persists the off state',
+        (tester) async {
+      await settingsRepo.setBool('habit_digest_enabled', true);
+      await pumpSettingsAtHabitRow(tester);
+      expect(find.text('8:00 PM'), findsOneWidget);
+
+      await tester.tap(habitDigestSwitch());
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(habitDigestSwitch()).value, isFalse);
+      expect(find.text('8:00 PM'), findsNothing);
+      expect(await settingsRepo.getBool('habit_digest_enabled'), isFalse);
+    });
+
+    testWidgets('A stored time is loaded into the chip', (tester) async {
+      await settingsRepo.setBool('habit_digest_enabled', true);
+      await settingsRepo.setInt('habit_digest_time_min', 7 * 60 + 30);
+
+      await pumpSettingsAtHabitRow(tester);
+
+      expect(find.text('7:30 AM'), findsOneWidget);
+      expect(find.text('8:00 PM'), findsNothing);
+    });
+
+    testWidgets('Tapping the time chip opens a time picker', (tester) async {
+      await settingsRepo.setBool('habit_digest_enabled', true);
+      await pumpSettingsAtHabitRow(tester);
+
+      await tester.tap(find.text('8:00 PM'));
+      await tester.pumpAndSettle();
+
+      // The dial's internals move between Flutter versions, so this asserts
+      // the picker opened and that cancelling leaves the value alone rather
+      // than driving the dial itself. `reconcileHabitDigest`'s own tests
+      // cover what a changed value does.
+      expect(find.byType(TimePickerDialog), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('8:00 PM'), findsOneWidget);
+      expect(
+        await settingsRepo.getInt('habit_digest_time_min'),
+        anyOf(isNull, equals(ReminderService.defaultHabitDigestTimeMin)),
+      );
+    });
+
+    testWidgets('Changing the time persists it and reschedules', (tester) async {
+      await settingsRepo.setBool('habit_digest_enabled', true);
+      await pumpSettingsAtHabitRow(tester);
+
+      // Driven through the notifier the picker's callback calls, so the
+      // assertion is about the binding rather than the dial widget.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SettingsScreen)),
+      );
+      container.read(habitDigestTimeMinProvider.notifier).setTime(9 * 60 + 15);
+      await tester.pumpAndSettle();
+
+      expect(find.text('9:15 AM'), findsOneWidget);
+      expect(await settingsRepo.getInt('habit_digest_time_min'),
+          equals(9 * 60 + 15));
+    });
+
+    testWidgets('The daily digest row is unaffected by the habit row',
+        (tester) async {
+      await settingsRepo.setBool('habit_digest_enabled', true);
+      await pumpSettingsAtHabitRow(tester);
+
+      // The daily digest row sits above the habit one and has been scrolled
+      // out of the lazy ListView by `pumpSettingsAtHabitRow`, so walk back up
+      // to it before reading its switch.
+      await tester.scrollUntilVisible(
+        find.text('Daily digest'),
+        -200,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final dailySwitch = find.ancestor(
+        of: find.text('Daily digest'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tester.widget<SwitchListTile>(dailySwitch).value, isFalse,
+          reason: 'the task digest keeps its own off-by-default state');
+      expect(await settingsRepo.getBool('digest_enabled'), isNull);
     });
 
     testWidgets('TaskDetailSheet renders the default reminder chip and an add-reminder chip for a timed task', (tester) async {

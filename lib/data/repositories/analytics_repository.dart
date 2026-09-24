@@ -208,6 +208,16 @@ class AnalyticsRepository {
     };
   }
 
+  /// §4.2 for one period on its own.
+  ///
+  /// The trend chip on the Stats hero needs the *previous* period's completion
+  /// rate and nothing else. Building a whole [StatsBundle] for it would run
+  /// four more queries and compute a peak window, a weekday profile and a time
+  /// allocation that no one reads.
+  Future<CompletionRate> completionRateIn(StatsPeriod period) async {
+    return CompletionRate.of(await sessionsIn(period));
+  }
+
   // ── Assembly ─────────────────────────────────────────────────────────────
 
   /// Everything for one period, from one consistent read.

@@ -309,13 +309,20 @@ class _QuickCaptureSheetState extends ConsumerState<QuickCaptureSheet> {
           ),
           const SizedBox(height: 12),
 
-          // Persistent syntax legend (small, muted) so the mini-syntax is
-          // discoverable without needing to open the help dialog.
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              '!p1–!p4 priority · #tag · ~2p focus sessions · "fri 5pm" due date/time',
-              style: textTheme.labelSmall?.copyWith(color: tokens.textMuted),
+          // Persistent syntax legend so the mini-syntax is discoverable
+          // without needing to open the help dialog. Chips rather than one
+          // muted line, per the mockup; the wording is the real syntax, not
+          // the mockup's placeholder copy.
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _LegendChip('!p1–!p4 priority', accent: true),
+                _LegendChip('#tag'),
+                _LegendChip('~2p focus sessions'),
+              ],
             ),
           ),
 
@@ -526,6 +533,41 @@ class _SyntaxRow extends StatelessWidget {
             child: Text(description, style: textTheme.bodySmall),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One pill in the quick-capture syntax legend.
+///
+/// The priority chip is the accented one, matching the mockup: it is the
+/// token people reach for first and the only one with a closed set of values.
+class _LegendChip extends StatelessWidget {
+  const _LegendChip(this.label, {this.accent = false});
+
+  final String label;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.tokens;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: accent ? scheme.primaryContainer : tokens.lineSoft,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: accent ? scheme.onPrimaryContainer : tokens.textSecondary,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
       ),
     );
   }

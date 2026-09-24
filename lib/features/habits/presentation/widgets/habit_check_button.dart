@@ -6,6 +6,7 @@ import '../../../../data/repositories/habits_repository.dart';
 import '../../../../theme/app_theme.dart';
 import '../../domain/habit_presentation.dart';
 import '../habit_check_controller.dart';
+import 'habit_check_burst.dart';
 import 'habit_marks.dart';
 
 /// The check-off control for one habit, or — when the habit is not due
@@ -127,27 +128,35 @@ class HabitCheckButton extends ConsumerWidget {
       excludeSemantics: true,
       child: SizedBox.square(
         dimension: size,
-        child: Material(
-          type: MaterialType.transparency,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: () async {
-              try {
-                await controller.tap(snapshot);
-              } catch (_) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                  const SnackBar(content: Text('That check-off did not save.')),
-                );
-              }
-            },
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 140),
-              child: KeyedSubtree(
-                key: ValueKey('$done-$count-$resting'),
-                child: face,
+        // Pure decoration on top of the existing fill swap: the pop and flecks
+        // fire off `done`, and nothing here touches the check-off itself.
+        child: HabitCheckBurst(
+          done: done,
+          diameter: size,
+          child: Material(
+            type: MaterialType.transparency,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () async {
+                try {
+                  await controller.tap(snapshot);
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                    const SnackBar(
+                      content: Text('That check-off did not save.'),
+                    ),
+                  );
+                }
+              },
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 140),
+                child: KeyedSubtree(
+                  key: ValueKey('$done-$count-$resting'),
+                  child: face,
+                ),
               ),
             ),
           ),

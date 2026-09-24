@@ -193,6 +193,33 @@ int habitCheckOffsTotal(Iterable<HabitStatsInput> habits, StatsPeriod period) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Freezes used
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Rest days excused across every habit inside [period] — the count of
+/// `HabitDayOutcome.neutral` days, pooled.
+///
+/// The period-scoped counterpart of `HabitSnapshot.excusedThisMonth`, which is
+/// fixed to the current calendar month because that is the window the monthly
+/// allowance is granted over. A "this week" card cannot use that number: early
+/// in a month it would report freezes spent in days the card is not showing,
+/// and late in one it would pool several weeks of them into a figure labelled
+/// "this week".
+///
+/// Same shape as [habitCheckOffsTotal] above — walk each habit's map, keep
+/// what falls inside the window, add it up.
+int habitFreezeCountIn(Iterable<HabitStatsInput> habits, StatsPeriod period) {
+  var total = 0;
+  for (final habit in habits) {
+    for (final entry in habit.outcomes.entries) {
+      if (!period.contains(entry.key)) continue;
+      if (entry.value == HabitDayOutcome.neutral) total++;
+    }
+  }
+  return total;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Streak leaderboard
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -286,6 +313,144 @@ HabitStatsBundle buildHabitStatsBundle({
     totalCheckOffs: habitCheckOffsTotal(habits, period),
     activeHabitCount: habits.length,
     leaderboard: habitLeaderboard(habits),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Weekly recap — the Habits screen's "This week" card
+// ─────────────────────────────────────────────────────────────────────────
+
+/// One day's column in the recap's Mon–Sun mini chart.
+///
+/// [rate] is that day's pooled completion, or null when nothing on it could be
+/// scored. Null is deliberately not zero: a day where every habit was excused,
+/// and a day where nothing was scheduled, are both "no claim to make" rather
+/// than "you did nothing".
+class WeeklyRecapDay {
+  const WeeklyRecapDay({
+    required this.date,
+    required this.rate,
+    required this.isToday,
+    required this.isFuture,
+  });
+
+  final String date;
+  final double? rate;
+  final bool isToday;
+
+  /// Later in the week than today. Drawn as a placeholder rather than an empty
+  /// bar — a day that has not happened yet is not a day where nothing was
+  /// done, and drawing the two the same way would accuse the user of missing
+  /// Thursday on a Tuesday.
+  final bool isFuture;
+}
+
+/// Everything the Habits screen's "This week" card shows, from one read.
+///
+/// Fixed to the current calendar week on purpose. The Stats screen's range
+/// picker drives `HabitStatsBundle`; this card always answers "this week", so
+/// it must not be wired to that picker — a card headed "This week" that
+/// silently followed a 90-day selection would be lying in its own title.
+class WeeklyRecap {
+  const WeeklyRecap({
+    required this.weekStart,
+    required this.weekEnd,
+    required this.completionRate,
+    required this.priorCompletionRate,
+    required this.days,
+    required this.bestStreak,
+    required this.habitsKept,
+    required this.freezesUsed,
+    required this.activeHabitCount,
+  });
+
+  final String weekStart;
+  final String weekEnd;
+
+  /// This week's pooled rate; null when nothing this week could be scored.
+  final double? completionRate;
+
+  /// Last week's, for the comparison line. Null for a first-ever week — the
+  /// card then shows the plain rate with no comparison rather than inventing
+  /// a baseline of zero to be "up" from.
+  final double? priorCompletionRate;
+
+  /// Seven entries, starting on the user's configured first day of the week
+  /// (`TimeService.weekStart`) — Monday by default, but Sunday or Saturday
+  /// when that setting says so. Read each entry's own `date` rather than
+  /// assuming index 0 is a Monday.
+  final List<WeeklyRecapDay> days;
+
+  /// The highest current streak across active habits. Whole-history, never
+  /// re-sliced to the week — see this file's header — and the same number the
+  /// habit digest's active-streak line cites, so the card and the notification
+  /// cannot disagree about it.
+  final int bestStreak;
+
+  final int habitsKept;
+  final int freezesUsed;
+  final int activeHabitCount;
+
+  /// Change in completion against last week, in points, or null when either
+  /// side has no data to compare.
+  double? get rateDelta {
+    final now = completionRate;
+    final prior = priorCompletionRate;
+    if (now == null || prior == null) return null;
+    return now - prior;
+  }
+
+  /// Same gate as [HabitStatsBundle.hasAnyData]: a user with no habits gets no
+  /// card rather than a card full of em dashes.
+  bool get hasAnyData => activeHabitCount > 0;
+}
+
+/// Builds the recap for the week beginning [weekStartLocalDate].
+///
+/// Every number comes from the same in-memory [habits] list, so the seven
+/// per-day rates, the two weekly rates and the three tiles are all one
+/// consistent read — and the whole thing costs exactly the queries that built
+/// [habits], no matter how many periods it asks about.
+WeeklyRecap buildWeeklyRecap({
+  required List<HabitStatsInput> habits,
+  required String todayLocalDate,
+  required String weekStartLocalDate,
+}) {
+  final weekEnd = TimeService.addDays(weekStartLocalDate, 6);
+  final thisWeek = StatsPeriod(start: weekStartLocalDate, end: weekEnd);
+
+  final priorStart = TimeService.addDays(weekStartLocalDate, -7);
+  final lastWeek = StatsPeriod(
+    start: priorStart,
+    end: TimeService.addDays(priorStart, 6),
+  );
+
+  var bestStreak = 0;
+  for (final habit in habits) {
+    if (habit.currentStreak > bestStreak) bestStreak = habit.currentStreak;
+  }
+
+  return WeeklyRecap(
+    weekStart: weekStartLocalDate,
+    weekEnd: weekEnd,
+    completionRate: HabitCompletionRate.of(habits, thisWeek).rate,
+    priorCompletionRate: HabitCompletionRate.of(habits, lastWeek).rate,
+    days: [
+      for (var i = 0; i < 7; i++)
+        () {
+          final date = TimeService.addDays(weekStartLocalDate, i);
+          return WeeklyRecapDay(
+            date: date,
+            rate: HabitCompletionRate.of(habits, StatsPeriod.day(date)).rate,
+            isToday: date == todayLocalDate,
+            isFuture: date.compareTo(todayLocalDate) > 0,
+          );
+        }(),
+    ],
+    bestStreak: bestStreak,
+    habitsKept: habitCheckOffsTotal(habits, thisWeek),
+    freezesUsed: habitFreezeCountIn(habits, thisWeek),
+    activeHabitCount: habits.length,
   );
 }
 

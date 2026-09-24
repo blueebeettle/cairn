@@ -54,3 +54,6 @@ KEYSTORE_CREDENTIALS.txt
 # Documentation (excluded from git)
 docs/
 
+
+# Golden-test failure output, regenerated on every failing run.
+test/failures/

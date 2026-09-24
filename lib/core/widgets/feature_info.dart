@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers/database_provider.dart';
 import '../../theme/app_theme.dart';
+import 'cairn_card.dart';
 
 /// One explained section inside a feature's help sheet.
 class FeatureInfoSection {
@@ -73,11 +74,7 @@ Future<void> showFeatureInfoSheet(BuildContext context, FeatureInfo info) {
                 Text(info.summary, style: textTheme.bodyLarge),
                 const SizedBox(height: 20),
                 for (final section in info.sections) ...[
-                  Text(
-                    section.heading,
-                    style: textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
+                  CardChrome.sectionLabel(ctx, section.heading),
                   const SizedBox(height: 4),
                   Text(
                     section.body,
@@ -198,47 +195,32 @@ class _FeatureInfoCardState extends ConsumerState<FeatureInfoCard> {
 
     return Padding(
       padding: widget.padding ?? const EdgeInsets.fromLTRB(16, 10, 16, 4),
-      child: Material(
-        color: colors.primaryContainer.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => showFeatureInfoSheet(context, widget.info),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: tokens.lineSoft),
+      child: CairnCard(
+        padding: const EdgeInsets.only(left: 12),
+        onTap: () => showFeatureInfoSheet(context, widget.info),
+        child: Row(
+          children: [
+            Icon(Icons.lightbulb_outline_rounded,
+                size: 20, color: colors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                widget.info.summary,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall
+                    ?.copyWith(color: tokens.textSecondary),
+              ),
             ),
-            padding: const EdgeInsets.only(left: 12),
-            // A slim one-line banner rather than a block with its own
-            // heading and button. The whole strip opens the full
-            // explanation, so it stays a single row tall and pushes the
-            // screen's real content down as little as possible.
-            child: Row(
-              children: [
-                Icon(Icons.lightbulb_outline_rounded,
-                    size: 20, color: colors.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.info.summary,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodySmall
-                        ?.copyWith(color: tokens.textSecondary),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Dismiss',
-                  iconSize: 18,
-                  constraints:
-                      const BoxConstraints(minWidth: 48, minHeight: 48),
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: _dismiss,
-                ),
-              ],
+            IconButton(
+              tooltip: 'Dismiss',
+              iconSize: 18,
+              constraints:
+                  const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: const Icon(Icons.close_rounded),
+              onPressed: _dismiss,
             ),
-          ),
+          ],
         ),
       ),
     );

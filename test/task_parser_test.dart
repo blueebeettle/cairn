@@ -131,6 +131,82 @@ void main() {
       expect(dt.minute, equals(0));
     });
 
+    // "Today" in this suite is 2026-09-13.
+    group('month/day year rollover', () {
+      DateTime dueOf(String input) => DateTime.fromMillisecondsSinceEpoch(
+            parser.parse(input).dueAtUtcMs!,
+            isUtc: true,
+          );
+
+      test('a date still ahead this year stays in this year', () {
+        final dt = dueOf('file the return dec 1');
+        expect(dt.year, equals(2026));
+        expect(dt.month, equals(12));
+        expect(dt.day, equals(1));
+      });
+
+      test('a date already gone by rolls into next year', () {
+        // January is nine months behind "today"; naming it means next
+        // January, the same way naming a weekday means next week.
+        final dt = dueOf('renew the licence jan 5');
+        expect(dt.year, equals(2027));
+        expect(dt.month, equals(1));
+        expect(dt.day, equals(5));
+      });
+
+      test('today itself is today, not a year away', () {
+        final dt = dueOf('call the bank sep 13');
+        expect(dt.year, equals(2026));
+        expect(dt.month, equals(9));
+        expect(dt.day, equals(13));
+      });
+
+      test('yesterday rolls forward a year rather than landing in the past',
+          () {
+        final dt = dueOf('post the form sep 12');
+        expect(dt.year, equals(2027));
+        expect(dt.month, equals(9));
+        expect(dt.day, equals(12));
+      });
+
+      test('tomorrow stays put', () {
+        final dt = dueOf('collect the parcel sep 14');
+        expect(dt.year, equals(2026));
+        expect(dt.month, equals(9));
+        expect(dt.day, equals(14));
+      });
+
+      test('a resolved month/day date is never in the past', () {
+        const today = '2026-09-13';
+        for (final month in [
+          'jan', 'feb', 'mar', 'apr', 'may', 'jun',
+          'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+        ]) {
+          final dt = dueOf('thing $month 15');
+          final iso = TimeService.formatIsoDate(dt.year, dt.month, dt.day);
+          expect(iso.compareTo(today) >= 0, isTrue,
+              reason: '$month 15 resolved to $iso, which is behind today');
+        }
+      });
+
+      test('feb 29 in a non-leap year behaves as it did before the rollover',
+          () {
+        // 2027 is not a leap year and 2028 is. Whatever `formatIsoDate` and
+        // the day-validation already did with an impossible date, the
+        // rollover must not make it worse — this pins the current behaviour
+        // so a future change to it is a deliberate one.
+        final result = parser.parse('leap day feb 29');
+        expect(result.dueAtUtcMs, isNotNull);
+        final dt = DateTime.fromMillisecondsSinceEpoch(
+          result.dueAtUtcMs!,
+          isUtc: true,
+        );
+        // Feb 2027 has 28 days, so Dart normalises 02-29 to 03-01. The point
+        // is that it resolves forward of today and does not throw.
+        expect(dt.isAfter(DateTime.utc(2026, 9, 13)), isTrue);
+      });
+    });
+
     test('ambiguity rule: keeps unparseable text in title rather than guessing', () {
       // "read Friday Night Lights" should NOT strip Friday
       final result = parser.parse('read friday night lights !p3');

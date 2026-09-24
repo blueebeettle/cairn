@@ -47,7 +47,7 @@ void main() {
 
     // 'Today' appears twice — the Today screen's AppBar and the nav label.
     expect(find.text('Today'), findsWidgets);
-    expect(find.text('Timer'), findsOneWidget);
+    expect(find.text('Focus'), findsOneWidget);
     expect(find.text('Tasks'), findsOneWidget);
     expect(find.text('Stats'), findsOneWidget);
 

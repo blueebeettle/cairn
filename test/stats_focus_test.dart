@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:habit_tracker/core/time/time_service.dart';
 import 'package:habit_tracker/data/repositories/stats_repository.dart';
 
 /// Tests for SPEC.md §4.1 (focus minutes) and §4.3 (streaks).
@@ -196,6 +197,129 @@ void main() {
         '2026-09-02': mins(30),
       };
       expect(StatsRepository.longestStreak(byDate, goal), equals(3));
+    });
+  });
+
+  group('milestone dates — the heatmap ring overlay', () {
+    /// [days] consecutive met days starting at [start].
+    Map<String, int> run(String start, int days, {int minutes = 30}) => {
+          for (var i = 0; i < days; i++)
+            TimeService.addDays(start, i): mins(minutes),
+        };
+
+    test('no data marks nothing', () {
+      expect(StatsRepository.milestoneDates({}, goal), isEmpty);
+    });
+
+    test('a streak that never reaches seven marks nothing', () {
+      final byDate = run('2026-09-01', 6);
+      expect(StatsRepository.milestoneDates(byDate, goal), isEmpty);
+    });
+
+    test('a run of exactly seven marks its seventh day and nothing else', () {
+      final byDate = run('2026-09-01', 7);
+      expect(
+        StatsRepository.milestoneDates(byDate, goal),
+        equals({'2026-09-07'}),
+      );
+    });
+
+    test('a long run marks 7, 14 and 30 — and only those days', () {
+      final byDate = run('2026-09-01', 45);
+      expect(
+        StatsRepository.milestoneDates(byDate, goal),
+        equals({
+          '2026-09-07', // day 7
+          '2026-09-14', // day 14
+          '2026-09-30', // day 30
+        }),
+      );
+    });
+
+    test('days between thresholds are not marked', () {
+      final marked = StatsRepository.milestoneDates(run('2026-09-01', 45), goal);
+      expect(marked.contains('2026-09-08'), isFalse); // day 8
+      expect(marked.contains('2026-09-15'), isFalse); // day 15
+      expect(marked.contains('2026-10-01'), isFalse); // day 31
+    });
+
+    test('a broken streak restarts the count, so the second run re-earns 7',
+        () {
+      // Seven days, a gap, then seven more. Both sevenths are milestones —
+      // the second run genuinely reached seven from zero.
+      final byDate = {
+        ...run('2026-09-01', 7), // 09-01..09-07
+        ...run('2026-09-10', 7), // 09-10..09-16
+      };
+      expect(
+        StatsRepository.milestoneDates(byDate, goal),
+        equals({'2026-09-07', '2026-09-16'}),
+      );
+    });
+
+    test('a day under the goal breaks the run even with data on it', () {
+      final byDate = {
+        ...run('2026-09-01', 6),
+        '2026-09-07': mins(10), // short of the goal — breaks it
+        ...run('2026-09-08', 7),
+      };
+      // The first stretch never reached 7; the second did, on 09-14.
+      expect(
+        StatsRepository.milestoneDates(byDate, goal),
+        equals({'2026-09-14'}),
+      );
+    });
+
+    test('hundreds keep repeating past the fixed early thresholds', () {
+      final byDate = run('2026-01-01', 210);
+      final marked = StatsRepository.milestoneDates(byDate, goal);
+      expect(marked, contains(TimeService.addDays('2026-01-01', 99))); // 100
+      expect(marked, contains(TimeService.addDays('2026-01-01', 199))); // 200
+      expect(marked.contains(TimeService.addDays('2026-01-01', 149)), isFalse);
+    });
+
+    test('unsorted input is walked in date order, not insertion order', () {
+      final ordered = run('2026-09-01', 14);
+      final shuffled = Map<String, int>.fromEntries(
+        ordered.entries.toList().reversed,
+      );
+      expect(
+        StatsRepository.milestoneDates(shuffled, goal),
+        equals(StatsRepository.milestoneDates(ordered, goal)),
+      );
+    });
+
+    test(
+        'a window opening mid-streak restarts the count — the documented limit',
+        () {
+      // The accepted limitation from `milestoneDates`' doc comment. The real
+      // streak here is 100 days long, but the caller only handed over its
+      // last 20 days, so day 7 of the *visible* stretch is marked even though
+      // the user crossed 7 eighty days earlier.
+      //
+      // Production is not exposed to this: `watchMilestoneDates` reads all
+      // history, never a window. The test pins the behaviour so a future
+      // caller that does pass a window knows what it gets.
+      final windowed = run('2026-09-01', 20);
+      expect(
+        StatsRepository.milestoneDates(windowed, goal),
+        equals({'2026-09-07', '2026-09-14'}),
+      );
+    });
+
+    test('all history sees the same streak correctly', () {
+      // The same 100-day run, handed over in full: 7, 14, 30, 60 and 100 are
+      // marked at their true positions.
+      final full = run('2026-06-01', 100);
+      final marked = StatsRepository.milestoneDates(full, goal);
+      expect(marked, hasLength(5));
+      for (final threshold in [7, 14, 30, 60, 100]) {
+        expect(
+          marked,
+          contains(TimeService.addDays('2026-06-01', threshold - 1)),
+          reason: 'day $threshold should be marked',
+        );
+      }
     });
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/time/time_service.dart';
+import '../../../core/widgets/cairn_card.dart';
 import '../../../core/widgets/focus_ring.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/providers/database_provider.dart';
@@ -19,6 +20,8 @@ import '../../tasks/presentation/widgets/quick_capture_sheet.dart';
 import '../../tasks/presentation/widgets/task_deletion_handler.dart';
 import '../../tasks/presentation/widgets/task_detail_sheet.dart';
 import '../../timer/presentation/timer_controller.dart';
+import 'widgets/grow_your_cairn_card.dart';
+import 'widgets/momentum_week_strip.dart';
 
 /// The Today screen rebuild per SPEC.md and M3 component theming.
 ///
@@ -54,7 +57,6 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final focusStatsAsync = ref.watch(focusStatsStreamProvider);
     final focusStats = focusStatsAsync.value ?? FocusStats.empty;
 
-    final last7DaysAsync = ref.watch(last7DaysSummaryStreamProvider);
     final sessionsAsync = ref.watch(sessionsForDateStreamProvider(currentViewDate));
     final tasksAsync = ref.watch(todayTasksStreamProvider(currentViewDate));
 
@@ -207,6 +209,20 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             ),
             const SizedBox(height: 2),
 
+            // ── 1b. Momentum week strip ──────────────────────────────────────
+            // Mon-Sun of the viewed week; today wears the same ring-and-glow
+            // as the CairnGlyph marker so "now" reads as one device.
+            MomentumWeekStrip(
+              weekOf: currentViewDate,
+              todayLocalDate: todayLocalDate,
+              weekStart: timeService.weekStart,
+              onDayTap: (date) {
+                ref.read(selectedDateProvider.notifier).state =
+                    date == todayLocalDate ? null : date;
+              },
+            ),
+            const SizedBox(height: 10),
+
             // ── 2. Small Chips: Streak & Best Ever ───────────────────────────
             Wrap(
               alignment: WrapAlignment.center,
@@ -244,65 +260,100 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             ),
             const SizedBox(height: 4),
 
-            // ── 3. 7-Day Bar Strip (StatsRepository Query) ───────────────────
-            last7DaysAsync.when(
-              data: (days) => _build7DayBarStrip(context, ref, days, currentViewDate),
-              loading: () => const SizedBox(height: 36),
-              error: (err, stack) => const SizedBox.shrink(),
-            ),
-            const SizedBox(height: 20), // week strip -> ring 20dp
-
-            // ── 4. Primary Element: FocusRing (0.58 factor on Today) ─────────
-            Center(
-              child: FocusRing(
-                widthFactor: 0.58,
-                progress: goalProgress,
-                figure: _formatFocusTime(focusStats.focusMinutesToday),
-                label: 'TODAY',
-                semanticsAnnouncement:
-                    '${focusStats.focusMinutesToday} of ${focusStats.dailyGoalMinutes} minutes, TODAY',
-                onTap: () {
-                  // Primary action: tap to start a session in Timer tab
-                  ref.read(navigationIndexProvider.notifier).state = 1;
-                },
+            // ── 2b. Grow your cairn ──────────────────────────────────────────
+            // Today only: the glyph tracks today's check-offs, and growing it
+            // under a past date would be claiming progress that isn't there.
+            // Renders nothing when no habit is due.
+            if (isToday)
+              GrowYourCairnCard(
+                currentStreakDays: focusStats.currentStreakDays,
               ),
-            ),
-            const SizedBox(height: 16), // ring -> caption text 16dp
+            const SizedBox(height: 20), // chips/cairn -> ring 20dp
 
-            // Caption text
-            Center(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () {
-                  ref.read(navigationIndexProvider.notifier).state = 1;
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
+            // ── 4. Primary Element: FocusRing, in the card system ────────────
+            // The ring used to sit bare on the page between two cards. Every
+            // other primary number in this redesign — the week strip above,
+            // the cairn card, the Stats hero — lives on a 22-radius shadowed
+            // surface, and this is the most important number on the screen.
+            // Ring geometry, colours and the caption are untouched; only the
+            // container around them is new.
+            Container(
+              decoration: BoxDecoration(
+                color: CardChrome.card(context),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Material(
+                type: MaterialType.transparency,
+                borderRadius: BorderRadius.circular(22),
+                child: InkWell(
+                  // One tap target over the whole card, so the padding, the
+                  // eyebrow and the caption all lead where the ring already
+                  // did. The ring and caption keep their own handlers; these
+                  // nest harmlessly and all three do the same thing.
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () {
+                    ref.read(navigationIndexProvider.notifier).state = 1;
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          'Goal: ${focusStats.dailyGoalMinutes} min',
-                          style: textTheme.titleSmall?.copyWith(
-                            color: tokens.textSecondary,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        CardChrome.sectionLabel(context, 'Focus'),
+                        const SizedBox(height: 10),
+                        FocusRing(
+                          widthFactor: 0.58,
+                          progress: goalProgress,
+                          figure: _formatFocusTime(focusStats.focusMinutesToday),
+                          label: 'TODAY',
+                          semanticsAnnouncement:
+                              '${focusStats.focusMinutesToday} of ${focusStats.dailyGoalMinutes} minutes, TODAY',
+                          onTap: () {
+                            // Primary action: tap to start a session in Timer tab
+                            ref.read(navigationIndexProvider.notifier).state = 1;
+                          },
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '•',
-                          style: textTheme.titleSmall?.copyWith(
-                            color: tokens.textMuted,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Ready to focus',
-                          style: textTheme.bodySmall?.copyWith(
-                            color: colors.primary,
-                            fontWeight: FontWeight.w700,
+                        const SizedBox(height: 16), // ring -> caption text 16dp
+
+                        // Caption text
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            ref.read(navigationIndexProvider.notifier).state = 1;
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 2),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Goal: ${focusStats.dailyGoalMinutes} min',
+                                    style: textTheme.titleSmall?.copyWith(
+                                      color: tokens.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '•',
+                                    style: textTheme.titleSmall?.copyWith(
+                                      color: tokens.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Ready to focus',
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: colors.primary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -311,7 +362,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 28), // caption -> TASKS 28dp
+            const SizedBox(height: 28), // focus card -> TASKS 28dp
 
             // ── 5. Tasks for Date ────────────────────────────────────────────
             _buildTasksSection(context, ref, tasksAsync, currentViewDate, isToday),
@@ -378,87 +429,6 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── 7-Day Bar Strip ────────────────────────────────────────────────────────
-
-  Widget _build7DayBarStrip(
-    BuildContext context,
-    WidgetRef ref,
-    List<DayFocusSummary> days,
-    String currentViewDate,
-  ) {
-    final colors = context.colors;
-    final tokens = context.tokens;
-    final textTheme = Theme.of(context).textTheme;
-
-    final maxMinutes = days.fold<int>(25, (max, d) => d.minutes > max ? d.minutes : max);
-
-    return Card(
-      color: colors.surfaceContainerLowest,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            for (final day in days)
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () {
-                    ref.read(selectedDateProvider.notifier).state = day.date;
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Mini bar representation
-                      SizedBox(
-                        height: 38,
-                        width: 14,
-                        child: Stack(
-                          alignment: Alignment.bottomCenter,
-                          children: [
-                            Container(
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: colors.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                            Container(
-                              height: (day.minutes / maxMinutes * 38).clamp(0.0, 38.0),
-                              decoration: BoxDecoration(
-                                color: day.goalMet
-                                    ? colors.primary
-                                    : (day.minutes > 0
-                                        ? colors.secondary
-                                        : Colors.transparent),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        day.label,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: day.date == currentViewDate
-                              ? colors.primary
-                              : tokens.textSecondary,
-                          fontWeight: day.date == currentViewDate || day.isToday
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -1160,4 +1130,3 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     return '$dateStr $displayHour:$minute $period';
   }
 }
-
