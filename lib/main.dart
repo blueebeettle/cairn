@@ -29,42 +29,77 @@ import 'features/widgets/home_screen_widget_service.dart';
 /// immediately instead of sitting on a blank screen for however long that
 /// work takes. This is the fix for the app taking 2-3s to open: previously
 /// every step below ran in one sequential chain before anything rendered.
+/// Result of independent bootstrap steps run concurrently at startup.
+class StartupBootstrapResult {
+  const StartupBootstrapResult({
+    required this.tzId,
+    required this.deviceId,
+    required this.dayStartOffset,
+  });
+
+  final String tzId;
+  final String deviceId;
+  final int dayStartOffset;
+}
+
+/// Runs independent startup steps concurrently via [Future.wait]:
+/// - HomeWidget platform callback registration
+/// - Timezone resolution via platform channel
+/// - Both settings DB queries (deviceId and day_start_offset)
+Future<StartupBootstrapResult> runStartupBootstrap({
+  required SettingsRepository settingsRepo,
+  required Future<void> Function() registerHomeWidgetCallback,
+  required Future<String> Function() resolveTimezone,
+}) async {
+  final startupResults = await Future.wait([
+    registerHomeWidgetCallback(),
+    resolveTimezone(),
+    settingsRepo.getOrCreateDeviceId(),
+    settingsRepo.getInt('day_start_offset'),
+  ]);
+
+  final tzId = startupResults[1] as String;
+  final deviceId = startupResults[2] as String;
+  final dayStartOffset = (startupResults[3] as int?) ?? 240;
+
+  return StartupBootstrapResult(
+    tzId: tzId,
+    deviceId: deviceId,
+    dayStartOffset: dayStartOffset,
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-    await HomeWidget.registerInteractivityCallback(homeWidgetBackgroundCallback);
-  }
-
-  // Must run here, before runApp() and before any TimerController is built.
-  // This registers the SendPort the foreground-service isolate looks up when
-  // a notification button is pressed; without it every press is silently
-  // dropped. It used to be called lazily from TimerForegroundService.init(),
-  // which only runs when a session is *started* from inside the app — so
-  // after the process restarted with a session already running, the port was
-  // never registered and Pause/Resume/Skip did nothing.
   if (!kIsWeb && Platform.isAndroid) {
     FlutterForegroundTask.initCommunicationPort();
   }
+
   final db = AppDatabase();
   final settingsRepo = SettingsRepository(db: db);
-  final deviceId = await settingsRepo.getOrCreateDeviceId();
 
-  // SPEC §1.2 — a real IANA id, not a platform abbreviation.
-  var tzId = '';
-  try {
-    tzId = (await FlutterTimezone.getLocalTimezone()).identifier;
-  } catch (_) {
-    // Plugin unavailable or the platform refused. tz_id is diagnostic only —
-    // every calculation runs off tz_offset_min, which is read live — so an
-    // empty id degrades the logs, not the numbers.
-  }
+  final bootstrap = await runStartupBootstrap(
+    settingsRepo: settingsRepo,
+    registerHomeWidgetCallback: () async {
+      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+        await HomeWidget.registerInteractivityCallback(homeWidgetBackgroundCallback);
+      }
+    },
+    resolveTimezone: () async {
+      try {
+        return (await FlutterTimezone.getLocalTimezone()).identifier;
+      } catch (_) {
+        return '';
+      }
+    },
+  );
 
-  // The saved day start matters here: habit reminders are placed on logical
-  // days (SPEC §1.2), and a default of 04:00 would misplace every reminder
-  // for someone whose day starts at 05:00.
+  final tzId = bootstrap.tzId;
+  final deviceId = bootstrap.deviceId;
+  final dayStartOffset = bootstrap.dayStartOffset;
+
   final timeService = TimeService(
-    dayStartOffsetMinutes:
-        await settingsRepo.getInt('day_start_offset') ?? 240,
+    dayStartOffsetMinutes: dayStartOffset,
     tzIdProvider: tzId.isEmpty ? null : () => tzId,
   );
 

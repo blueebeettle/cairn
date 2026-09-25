@@ -1023,11 +1023,18 @@ class TasksRepository {
   /// Includes open tasks due on [localDate] or overdue (due before [localDate]),
   /// plus tasks completed on [localDate].
   Stream<List<TaskWithDetails>> watchTodayTasks(String localDate) {
+    final maxDueAtUtc = TimeService.parseLocalDate(
+      TimeService.addDays(localDate, 2),
+    ).millisecondsSinceEpoch;
+
     return (_db.select(_db.tasks)
           ..where((t) =>
               t.parentId.isNull() &
-              t.status.isNotValue('archived') &
-              t.deletedAt.isNull())
+              t.deletedAt.isNull() &
+              ((t.status.equals('done') & t.completedLocalDate.equals(localDate)) |
+                  (t.status.equals('open') &
+                      t.dueAt.isNotNull() &
+                      t.dueAt.isSmallerOrEqualValue(maxDueAtUtc))))
           ..orderBy([
             (t) => OrderingTerm.asc(t.priority),
             (t) => OrderingTerm.asc(t.dueAt),
@@ -1065,15 +1072,18 @@ class TasksRepository {
 
       final details = await _enrichTasks(nonPending);
 
-      // One query for every task_archived event, newest first; putIfAbsent then
-      // keeps the newest per task. Previously this was one query per archived
-      // task inside the same fan-out.
-      final archiveEvents = await (_db.select(_db.events)
-            ..where((e) =>
-                e.subjectType.equals('task') &
-                e.type.equals('task_archived'))
-            ..orderBy([(e) => OrderingTerm.desc(e.occurredAt)]))
-          .get();
+      // Scoped query for task_archived events of only non-pending tasks.
+      final taskIds = nonPending.map((t) => t.id).toList();
+      final archiveEvents = await _chunkedQuery(
+        taskIds,
+        (chunk) => (_db.select(_db.events)
+              ..where((e) =>
+                  e.subjectType.equals('task') &
+                  e.type.equals('task_archived') &
+                  e.subjectId.isIn(chunk))
+              ..orderBy([(e) => OrderingTerm.desc(e.occurredAt)]))
+            .get(),
+      );
       final latestArchivedAt = <String, int>{};
       for (final event in archiveEvents) {
         final subjectId = event.subjectId;
@@ -1100,11 +1110,16 @@ class TasksRepository {
   /// Watches tasks for the **Upcoming** view:
   /// Open tasks with due dates strictly after [todayLocalDate].
   Stream<List<TaskWithDetails>> watchUpcomingTasks(String todayLocalDate) {
+    final minDueAtUtc = TimeService.parseLocalDate(todayLocalDate)
+        .subtract(const Duration(days: 1))
+        .millisecondsSinceEpoch;
+
     return (_db.select(_db.tasks)
           ..where((t) =>
               t.parentId.isNull() &
               t.status.equals('open') &
               t.dueAt.isNotNull() &
+              t.dueAt.isBiggerOrEqualValue(minDueAtUtc) &
               t.deletedAt.isNull())
           ..orderBy([
             (t) => OrderingTerm.asc(t.dueAt),
@@ -1168,40 +1183,78 @@ class TasksRepository {
     );
   }
 
-  /// Enriches many tasks with a fixed number of queries instead of three or
-  /// four per task.
-  ///
-  /// Three lookups, joined in Dart. Deliberately no `IN (...)` clause: SQLite
-  /// caps bound variables at 999 on older builds, and a list long enough to
-  /// need chunking is exactly the list this method exists to handle. The tables
-  /// read here are all small — a handful of projects, one tag row per tagged
-  /// task, one row per subtask — so reading them whole costs far less than the
-  /// thousands of round-trips it replaces.
+  static const _maxVariablesPerQuery = 500;
+
+  Future<List<T>> _chunkedQuery<T>(
+    List<String> ids,
+    Future<List<T>> Function(List<String> chunk) queryFn,
+  ) async {
+    if (ids.length <= _maxVariablesPerQuery) {
+      return queryFn(ids);
+    }
+    final results = <T>[];
+    for (var i = 0; i < ids.length; i += _maxVariablesPerQuery) {
+      final chunk = ids.sublist(
+        i,
+        (i + _maxVariablesPerQuery > ids.length)
+            ? ids.length
+            : i + _maxVariablesPerQuery,
+      );
+      results.addAll(await queryFn(chunk));
+    }
+    return results;
+  }
+
+  /// Enriches many tasks with queries scoped to the actual task list being enriched.
   Future<List<TaskWithDetails>> _enrichTasks(List<Task> tasks) async {
     if (tasks.isEmpty) return <TaskWithDetails>[];
 
-    final projects = await (_db.select(_db.projects)
-          ..where((p) => p.deletedAt.isNull()))
-        .get();
+    final taskIds = tasks.map((t) => t.id).toList();
+    final projectIds = tasks
+        .map((t) => t.projectId)
+        .whereType<String>()
+        .toSet()
+        .toList();
+
+    // 1. Fetch only relevant projects
+    final List<Project> projects;
+    if (projectIds.isEmpty) {
+      projects = const [];
+    } else {
+      projects = await _chunkedQuery(
+        projectIds,
+        (chunk) => (_db.select(_db.projects)
+              ..where((p) => p.id.isIn(chunk) & p.deletedAt.isNull()))
+            .get(),
+      );
+    }
     final projectById = {for (final p in projects) p.id: p};
 
-    final tagRows = await (_db.select(_db.tags).join([
-      innerJoin(_db.taskTags, _db.taskTags.tagId.equalsExp(_db.tags.id)),
-    ])..where(_db.tags.deletedAt.isNull()))
-        .get();
+    // 2. Fetch only relevant tags
+    final tagRows = await _chunkedQuery(
+      taskIds,
+      (chunk) => (_db.select(_db.tags).join([
+        innerJoin(_db.taskTags, _db.taskTags.tagId.equalsExp(_db.tags.id)),
+      ])..where(_db.taskTags.taskId.isIn(chunk) & _db.tags.deletedAt.isNull()))
+          .get(),
+    );
     final tagsByTaskId = <String, List<Tag>>{};
     for (final row in tagRows) {
       final taskId = row.readTable(_db.taskTags).taskId;
       (tagsByTaskId[taskId] ??= <Tag>[]).add(row.readTable(_db.tags));
     }
 
-    final subtaskRows = await (_db.select(_db.tasks)
-          ..where((t) =>
-              t.parentId.isNotNull() &
-              t.status.isNotValue('archived') &
-              t.deletedAt.isNull())
-          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
-        .get();
+    // 3. Fetch only relevant subtasks
+    final subtaskRows = await _chunkedQuery(
+      taskIds,
+      (chunk) => (_db.select(_db.tasks)
+            ..where((t) =>
+                t.parentId.isIn(chunk) &
+                t.status.isNotValue('archived') &
+                t.deletedAt.isNull())
+            ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+          .get(),
+    );
     final subtasksByParentId = <String, List<Task>>{};
     for (final subtask in subtaskRows) {
       final parentId = subtask.parentId;

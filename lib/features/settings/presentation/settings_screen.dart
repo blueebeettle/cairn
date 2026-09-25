@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -259,6 +261,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                         ref.read(reminderServiceProvider).reconcileAll();
                       },
                     ),
+                    if (remindersEnabled) const ExactAlarmTile(),
                     if (remindersEnabled) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -798,6 +801,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
           },
         );
       },
+    );
+  }
+}
+
+/// Prompts for the exact-alarm permission when Android is withholding it.
+///
+/// Android 13+ starts `SCHEDULE_EXACT_ALARM` denied, and without it the OS is
+/// free to batch reminders under Doze — which is exactly the "arrives late"
+/// complaint. [ReminderService] still schedules inexact in that state, so this
+/// tile is an upgrade path rather than a gate, and it only appears when the
+/// permission is actually missing.
+///
+/// Surfaced here rather than requested silently at startup because granting it
+/// sends the user out to a system settings page; an unexplained jump there is
+/// worse than a late reminder.
+class ExactAlarmTile extends ConsumerStatefulWidget {
+  const ExactAlarmTile({super.key});
+
+  @override
+  ConsumerState<ExactAlarmTile> createState() => _ExactAlarmTileState();
+}
+
+class _ExactAlarmTileState extends ConsumerState<ExactAlarmTile> {
+  bool _allowed = true;
+  bool _checked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    final allowed =
+        await ref.read(reminderServiceProvider).refreshExactAlarmCapability();
+    if (!mounted) return;
+    setState(() {
+      _allowed = allowed;
+      _checked = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Only Android has this permission; everywhere else the capability check
+    // returns the optimistic default and this renders nothing.
+    if (!_checked || _allowed || defaultTargetPlatform != TargetPlatform.android) {
+      return const SizedBox.shrink();
+    }
+    final colors = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Icon(Icons.schedule_outlined, color: colors.error),
+      title: const Text('Allow exact reminder times'),
+      subtitle: const Text(
+        'Android is batching reminders, so they can arrive late. '
+        'Allow exact alarms to have them fire on time.',
+      ),
+      isThreeLine: true,
+      trailing: FilledButton(
+        onPressed: () async {
+          final granted = await ref
+              .read(reminderServiceProvider)
+              .requestExactAlarmPermission();
+          if (!mounted) return;
+          setState(() => _allowed = granted);
+        },
+        child: const Text('Allow'),
+      ),
     );
   }
 }

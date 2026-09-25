@@ -136,6 +136,10 @@ class HabitAnalyticsRepository {
   /// Thresholds for the habit heatmap's legend, recomputed at most once a
   /// week — same cadence and the same reasoning as
   /// `AnalyticsRepository.heatmapThresholds`.
+  ///
+  /// Once non-provisional thresholds exist, they are cached for the remainder
+  /// of the week; provisional cache entries are treated as invalid so the user
+  /// can promote to the real scale mid-week as soon as they reach 14 non-zero days.
   Future<HeatmapThresholds> heatmapThresholds({
     required String todayLocalDate,
     bool forceRecompute = false,
@@ -168,9 +172,10 @@ class HabitAnalyticsRepository {
     return thresholds;
   }
 
-  /// Returns null when the cache is absent, stale, or malformed — a
+  /// Returns null when the cache is absent, stale, malformed, or provisional — a
   /// malformed or hand-edited settings row costs one recomputation rather
-  /// than a crash on the way into the Stats screen.
+  /// than a crash on the way into the Stats screen, and a provisional entry is
+  /// treated as invalid so it can promote to the real scale mid-week.
   ///
   /// Duplicated from `AnalyticsRepository._readCachedThresholds` rather than
   /// shared: same reasoning as the `_testSafeStream` duplication in the
@@ -187,12 +192,14 @@ class HabitAnalyticsRepository {
     if (l1 is! int || l2 is! int || l3 is! int || l4 is! int || n is! int) {
       return null;
     }
+    final provisional = cached['provisional'] == true;
+    if (provisional) return null;
     return HeatmapThresholds(
       level1Max: l1,
       level2Max: l2,
       level3Max: l3,
       level4Nominal: l4,
-      provisional: cached['provisional'] == true,
+      provisional: false,
       nonZeroDayCount: n,
     );
   }

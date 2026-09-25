@@ -48,10 +48,9 @@ class AppDatabase extends _$AppDatabase {
   //    reminder_notification_id are dropped; task_reminder_offsets and
   //    habit_reminder_times replace them, one row per configured reminder.
   //
-  // NOTE: onUpgrade below is DESTRUCTIVE — it drops every table. That is
-  // acceptable only while no release has shipped. The first public build
-  // freezes this: any schema change after that must be a real migration, or
-  // it erases every user's history on update.
+  // NOTE: Schema migrations must always be non-destructive and preserve user
+  // data across upgrades. Stepped migration dispatch handles per-version transitions
+  // additively (using m.addColumn, m.createTable, m.alterTable, or raw SQL).
   @override
   int get schemaVersion => 6;
 
@@ -62,16 +61,35 @@ class AppDatabase extends _$AppDatabase {
           await _createIndexes();
         },
         onUpgrade: (Migrator m, int from, int to) async {
-          // Destructive migration (§7): drop every table and call createAll().
+          // Stepped non-destructive migration. Never drop-and-recreate.
+          // Disabling foreign keys during schema modification is recommended by SQLite.
           await customStatement('PRAGMA foreign_keys = OFF;');
-          for (final table in allTables) {
-            await m.drop(table);
+          try {
+            for (var version = from + 1; version <= to; version++) {
+              await _migrateStep(m, version);
+            }
+            await _createIndexes();
+          } finally {
+            await customStatement('PRAGMA foreign_keys = ON;');
           }
-          await m.createAll();
+        },
+        beforeOpen: (details) async {
+          // Ensure all required indexes exist even when opening an existing database
+          // that has not bumped its schema version.
           await _createIndexes();
-          await customStatement('PRAGMA foreign_keys = ON;');
         },
       );
+
+  /// Stepped per-version migration scaffolding for future schema version bumps.
+  Future<void> _migrateStep(Migrator m, int targetVersion) async {
+    switch (targetVersion) {
+      case 7:
+        // Future schema version 7 additions.
+        break;
+      default:
+        break;
+    }
+  }
 
   Future<void> _createIndexes() async {
     // Explicitly ensure the 3 required indexes on events table per SPEC.md §2.1:
@@ -86,6 +104,31 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS events_subject_idx ON events (subject_type, subject_id);',
+    );
+
+    // Focus sessions read model indexes (§2.3)
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS focus_sessions_local_date_idx ON focus_sessions (local_date);',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS focus_sessions_outcome_idx ON focus_sessions (outcome);',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS focus_sessions_task_id_idx ON focus_sessions (task_id);',
+    );
+
+    // Tasks read model indexes (§2.4)
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks (status);',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS tasks_parent_id_idx ON tasks (parent_id);',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS tasks_due_at_idx ON tasks (due_at);',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS tasks_completed_local_date_idx ON tasks (completed_local_date);',
     );
 
     // Habit read model (SPEC.md §10.1).

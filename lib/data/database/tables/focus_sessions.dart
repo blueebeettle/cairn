@@ -1,6 +1,9 @@
 import 'package:drift/drift.dart';
 
 /// FocusSessions table (SPEC.md §2.3) — read model derived from events.
+@TableIndex(name: 'focus_sessions_local_date_idx', columns: {#localDate})
+@TableIndex(name: 'focus_sessions_outcome_idx', columns: {#outcome})
+@TableIndex(name: 'focus_sessions_task_id_idx', columns: {#taskId})
 class FocusSessions extends Table {
   /// Session identifier (UUID string).
   TextColumn get id => text()();

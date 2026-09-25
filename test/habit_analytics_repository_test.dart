@@ -26,6 +26,7 @@ void main() {
   late TimeService time;
   late HabitsRepository habits;
   late HabitAnalyticsRepository analytics;
+  late SettingsRepository settings;
   int nowMs = _at('2026-09-06');
 
   setUp(() {
@@ -44,10 +45,11 @@ void main() {
       timeService: time,
       deviceId: 'test-device',
     );
+    settings = SettingsRepository(db: db);
     analytics = HabitAnalyticsRepository(
       db: db,
       timeService: time,
-      settings: SettingsRepository(db: db),
+      settings: settings,
       habitsRepository: habits,
     );
   });
@@ -140,6 +142,99 @@ void main() {
       // not the focus-minutes one.
       expect(thresholds.provisional, isTrue);
       expect(thresholds.level4Nominal, 5);
+    });
+  });
+
+  group('heatmapThresholds() — provisional cache promotion and mid-week crossing', () {
+    test(
+      'provisional cache is not served as-is, promotes mid-week upon 14 non-zero days, and caches non-provisional',
+      () async {
+        // Anchor on 2026-08-01 so check-offs across August are valid scheduled dates
+        nowMs = _at('2026-08-01');
+        final habitId = await habits.createHabit(
+          title: 'Exercise',
+          scheduleRule: 'FREQ=DAILY',
+        );
+
+        // 1. Initial 5 distinct days of check-offs (< 14 minimumNonZeroDays)
+        for (var d = 1; d <= 5; d++) {
+          final date = '2026-08-0$d';
+          nowMs = _at(date);
+          await habits.check(habitId, localDate: date);
+        }
+        nowMs = _at('2026-09-06');
+
+        final t1 = await analytics.heatmapThresholds(todayLocalDate: '2026-09-06');
+        expect(t1.provisional, isTrue);
+        expect(t1.nonZeroDayCount, 5);
+
+        // Verify cache in settings store was written with provisional: true
+        final cached1 = await settings.get(HabitAnalyticsRepository.thresholdsCacheKey) as Map?;
+        expect(cached1, isNotNull);
+        expect(cached1!['provisional'], isTrue);
+
+        // 2. Next read within the same week: recomputes, still provisional
+        final t2 = await analytics.heatmapThresholds(todayLocalDate: '2026-09-06');
+        expect(t2.provisional, isTrue);
+        expect(t2.nonZeroDayCount, 5);
+
+        // 3. Add check-offs across 10 more distinct days so count reaches 15 (>= 14) mid-week
+        for (var d = 10; d < 20; d++) {
+          final date = '2026-08-$d';
+          nowMs = _at(date);
+          await habits.check(habitId, localDate: date);
+        }
+        nowMs = _at('2026-09-06');
+
+        // Next read in the SAME week immediately promotes to non-provisional
+        final t3 = await analytics.heatmapThresholds(todayLocalDate: '2026-09-06');
+        expect(t3.provisional, isFalse);
+        expect(t3.nonZeroDayCount, 15);
+
+        // Cache now stores provisional == false
+        final cached2 = await settings.get(HabitAnalyticsRepository.thresholdsCacheKey) as Map?;
+        expect(cached2, isNotNull);
+        expect(cached2!['provisional'], isFalse);
+
+        // 4. Once non-provisional, subsequent reads in the same week return the cached value
+        // Mutate underlying data by adding another check-off on a new date
+        const dateExtra = '2026-08-25';
+        nowMs = _at(dateExtra);
+        await habits.check(habitId, localDate: dateExtra);
+        nowMs = _at('2026-09-06');
+
+        final t4 = await analytics.heatmapThresholds(todayLocalDate: '2026-09-06');
+        // Returned value is still the cached one (15 nonZeroDayCount, not 16)
+        expect(t4.provisional, isFalse);
+        expect(t4.nonZeroDayCount, 15);
+        expect(t4.level1Max, t3.level1Max);
+        expect(t4.level2Max, t3.level2Max);
+
+        // 5. forceRecompute: true bypasses cache and reflects the new data
+        final t5 = await analytics.heatmapThresholds(
+          todayLocalDate: '2026-09-06',
+          forceRecompute: true,
+        );
+        expect(t5.provisional, isFalse);
+        expect(t5.nonZeroDayCount, 16);
+      },
+    );
+
+    test('forceRecompute: true bypasses provisional cache as well', () async {
+      nowMs = _at('2026-08-01');
+      final habitId = await habits.createHabit(
+        title: 'Exercise',
+        scheduleRule: 'FREQ=DAILY',
+      );
+      await habits.check(habitId, localDate: '2026-08-01');
+      nowMs = _at('2026-09-06');
+
+      final t1 = await analytics.heatmapThresholds(
+        todayLocalDate: '2026-09-06',
+        forceRecompute: true,
+      );
+      expect(t1.provisional, isTrue);
+      expect(t1.nonZeroDayCount, 1);
     });
   });
 }

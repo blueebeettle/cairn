@@ -27,6 +27,34 @@ final taskViewTabProvider = StateProvider<TaskViewTab>(
   (ref) => TaskViewTab.today,
 );
 
+/// Memoized open/done split and sorted tasks for the Today view.
+/// Moves sorting out of build() into a Riverpod provider layer.
+typedef TodaySortedTasks = ({
+  List<TaskWithDetails> open,
+  List<TaskWithDetails> done,
+});
+
+final todaySortedTasksProvider = Provider.family<
+    AsyncValue<TodaySortedTasks>,
+    ({String todayLocalDate, String? selectedProjectId})>((ref, params) {
+  final tasksAsync = ref.watch(todayTasksStreamProvider(params.todayLocalDate));
+  final timeService = ref.watch(timeServiceProvider);
+
+  return tasksAsync.whenData((tasks) {
+    final filtered = params.selectedProjectId == null
+        ? tasks
+        : tasks.where((t) => t.task.projectId == params.selectedProjectId).toList();
+
+    final openTasks = filtered.where((t) => t.status == 'open').toList()
+      ..sort(
+        (a, b) => compareTasks(a.task, b.task, timeService, params.todayLocalDate),
+      );
+    final doneTasks = filtered.where((t) => t.status == 'done').toList();
+
+    return (open: openTasks, done: doneTasks);
+  });
+});
+
 /// Primary Tasks management screen per SPEC.md §2.4, §2.5, §2.6.
 ///
 /// Features:
@@ -217,17 +245,17 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     WidgetRef ref,
     String todayLocalDate,
   ) {
-    final tasksAsync = ref.watch(todayTasksStreamProvider(todayLocalDate));
-    final timeService = ref.watch(timeServiceProvider);
+    final sortedAsync = ref.watch(
+      todaySortedTasksProvider((
+        todayLocalDate: todayLocalDate,
+        selectedProjectId: _selectedProjectId,
+      )),
+    );
 
-    return tasksAsync.when(
-      data: (tasks) {
-        final filtered = _filterByProject(tasks);
-        final openTasks = filtered.where((t) => t.status == 'open').toList()
-          ..sort(
-            (a, b) => compareTasks(a.task, b.task, timeService, todayLocalDate),
-          );
-        final doneTasks = filtered.where((t) => t.status == 'done').toList();
+    return sortedAsync.when(
+      data: (sorted) {
+        final openTasks = sorted.open;
+        final doneTasks = sorted.done;
 
         // Empty state per §1.4 & Part E
         if (openTasks.isEmpty && doneTasks.isEmpty) {
@@ -239,7 +267,23 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           );
         }
 
-        return ListView(
+        final showDoneSection = doneTasks.isNotEmpty;
+        final showDoneCards = showDoneSection && _isCompletedExpanded;
+        final doneCardsCount = showDoneCards ? doneTasks.length : 0;
+
+        // Total items:
+        // Index 0: TodayProgressCard
+        // Index 1..openTasks.length: open tasks
+        // Index openTasks.length + 1 (if showDoneSection): completed summary row
+        // Index openTasks.length + 2 .. (if showDoneCards): done tasks
+        // Last index: DoneTodayCard
+        final totalCount = 1 +
+            openTasks.length +
+            (showDoneSection ? 1 : 0) +
+            doneCardsCount +
+            1;
+
+        return ListView.builder(
           padding: const EdgeInsets.only(
             left: 16,
             right: 16,
@@ -248,36 +292,53 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             // Habits list's reserve so the two tabs scroll to the same stop.
             bottom: 96,
           ),
-          children: [
-            TodayProgressCard(
-              open: openTasks.length,
-              done: doneTasks.length,
-            ),
-            for (final td in openTasks)
-              _buildDismissibleTaskCard(context, ref, td),
-            if (doneTasks.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              // The control that expands the done list - kept as it was; the
-              // card below is the day's tally, not another toggle.
-              _buildCompletedSummaryRow(
-                context,
-                count: doneTasks.length,
-                label: '${doneTasks.length} done',
-                isExpanded: _isCompletedExpanded,
-                onTap: () => setState(
-                  () => _isCompletedExpanded = !_isCompletedExpanded,
-                ),
+          itemCount: totalCount,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return TodayProgressCard(
+                open: openTasks.length,
+                done: doneTasks.length,
+              );
+            }
+
+            final openIndex = index - 1;
+            if (openIndex < openTasks.length) {
+              return _buildDismissibleTaskCard(context, ref, openTasks[openIndex]);
+            }
+
+            if (showDoneSection) {
+              final doneHeaderIndex = openTasks.length + 1;
+              if (index == doneHeaderIndex) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _buildCompletedSummaryRow(
+                    context,
+                    count: doneTasks.length,
+                    label: '${doneTasks.length} done',
+                    isExpanded: _isCompletedExpanded,
+                    onTap: () => setState(
+                      () => _isCompletedExpanded = !_isCompletedExpanded,
+                    ),
+                  ),
+                );
+              }
+
+              if (showDoneCards) {
+                final doneTaskIndex = index - (doneHeaderIndex + 1);
+                if (doneTaskIndex < doneTasks.length) {
+                  return _buildDismissibleTaskCard(context, ref, doneTasks[doneTaskIndex]);
+                }
+              }
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: DoneTodayCard(
+                done: doneTasks.length,
+                remaining: openTasks.length,
               ),
-              if (_isCompletedExpanded)
-                for (final td in doneTasks)
-                  _buildDismissibleTaskCard(context, ref, td),
-            ],
-            const SizedBox(height: 12),
-            DoneTodayCard(
-              done: doneTasks.length,
-              remaining: openTasks.length,
-            ),
-          ],
+            );
+          },
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),

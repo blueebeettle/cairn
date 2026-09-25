@@ -5,11 +5,50 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!--
+      Exact alarms for reminders. SCHEDULE_EXACT_ALARM is the user-grantable
+      tier: on Android 13+ it starts denied and the user grants it from system
+      settings, and ReminderService falls back to inexact scheduling when it is
+      not held, so a reminder is never simply dropped.
+
+      Deliberately NOT USE_EXACT_ALARM — that tier is auto-granted but is
+      restricted by Play policy to alarm-clock/calendar-class apps, which Cairn
+      is not.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:label="Cairn"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!--
+          flutter_local_notifications receivers. Without these the plugin can
+          schedule but never deliver: ScheduledNotificationReceiver is what
+          actually posts a zonedSchedule'd notification when its alarm fires,
+          ScheduledNotificationBootReceiver re-arms pending alarms after a
+          reboot or an app update (Android drops them otherwise, which is what
+          RECEIVE_BOOT_COMPLETED above is for), and ActionBroadcastReceiver is
+          what routes a tapped "Mark done"/"Snooze 15 min" button back into
+          Dart. They are required app-side — the plugin's own manifest declares
+          only VIBRATE and POST_NOTIFICATIONS.
+        -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="specialUse"

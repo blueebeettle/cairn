@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:drift/drift.dart';
@@ -18,6 +19,9 @@ import '../../data/repositories/habits_repository.dart';
 import '../../data/repositories/reminder_config_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import 'habit_digest_copy.dart';
+import 'notification_action_handler.dart';
+import 'notification_channels.dart';
+import 'reminder_copy.dart';
 
 /// Service managing scheduled task and habit reminder notifications per
 /// PROMPT-reminders.md and SPEC.md §10.4/§11.
@@ -90,8 +94,11 @@ class ReminderService {
             deviceId: 'reminder-service',
           );
 
-  static const String channelId = 'task_reminders';
-  static const String channelName = 'Task reminders';
+  /// Channel identity now lives in `notification_channels.dart`, shared with
+  /// the background action handler. Kept here as aliases so existing callers
+  /// and tests keep working.
+  static const String channelId = reminderChannelId;
+  static const String channelName = reminderChannelName;
 
   /// The task digest's reserved id band is 1..[_maxDigestSlots].
   ///
@@ -117,50 +124,169 @@ class ReminderService {
   /// Evening, because the line it carries is about what is still open today.
   static const int defaultHabitDigestTimeMin = 20 * 60;
 
-  static const AndroidNotificationDetails _androidDetails = AndroidNotificationDetails(
-    channelId,
-    channelName,
-    channelDescription: 'Reminders for upcoming tasks and habits',
-    importance: Importance.defaultImportance,
-    priority: Priority.defaultPriority,
-  );
-  static const NotificationDetails _details = NotificationDetails(android: _androidDetails);
+  /// Settings keys holding the last copy variant used per pool, so the next
+  /// notification of the same kind does not repeat the line. Same
+  /// settings-backed-marker pattern as [habitDigestLastIndexKey].
+  static const String taskLeadInLastIndexKey = 'task_lead_in_last_index_v1';
+  static const String habitReminderLastIndexKey =
+      'habit_reminder_last_index_v1';
+  static const String taskDigestLastIndexKey = 'task_digest_last_index_v1';
+
+  /// Whether the OS will honour an exact alarm right now.
+  ///
+  /// Optimistic by default: everything schedules exact until a platform check
+  /// says otherwise, so a device that cannot answer (iOS, tests, Android below
+  /// 12 where exact alarms need no grant) still gets exact mode. Refreshed by
+  /// [refreshExactAlarmCapability] during [initialize] and after a permission
+  /// request.
+  bool _exactAlarmsAllowed = true;
+
+  /// True when reminders are currently scheduled with exact alarms.
+  bool get exactAlarmsAllowed => _exactAlarmsAllowed;
+
+  /// Forces the capability, so a test can exercise the declined-permission
+  /// fallback without a platform channel to deny it.
+  @visibleForTesting
+  set exactAlarmsAllowedForTest(bool value) => _exactAlarmsAllowed = value;
+
+  /// The schedule mode every `zonedSchedule` in this service uses.
+  ///
+  /// Falling back to [AndroidScheduleMode.inexactAllowWhileIdle] when the
+  /// exact-alarm permission is absent is the whole point: a declined
+  /// permission must degrade delivery, never drop the reminder.
+  AndroidScheduleMode get scheduleMode => _exactAlarmsAllowed
+      ? AndroidScheduleMode.exactAllowWhileIdle
+      : AndroidScheduleMode.inexactAllowWhileIdle;
+
+  AndroidFlutterLocalNotificationsPlugin? get _android => _plugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+
+  /// Re-reads whether exact alarms can be scheduled.
+  ///
+  /// A null answer (non-Android, or a plugin that does not implement the
+  /// check) leaves the optimistic default alone rather than downgrading.
+  Future<bool> refreshExactAlarmCapability() async {
+    try {
+      final allowed = await _android?.canScheduleExactNotifications();
+      if (allowed != null) _exactAlarmsAllowed = allowed;
+    } catch (_) {
+      // Older platform or unavailable channel — keep the current value.
+    }
+    return _exactAlarmsAllowed;
+  }
+
+  /// Asks the user for the exact-alarm permission, then reschedules.
+  ///
+  /// Surfaced from the reminders settings screen rather than fired silently,
+  /// because on Android 13+ this sends the user out to a system settings page
+  /// and an unexplained jump there is worse than a late reminder. Returns
+  /// whether exact alarms are available afterwards.
+  ///
+  /// Reconciles either way: granting upgrades already-pending reminders from
+  /// inexact to exact, and declining leaves them scheduled inexact rather than
+  /// not at all.
+  Future<bool> requestExactAlarmPermission() async {
+    try {
+      await _android?.requestExactAlarmsPermission();
+    } catch (_) {
+      // Request unsupported — fall through to the capability re-read.
+    }
+    final allowed = await refreshExactAlarmCapability();
+    try {
+      await reconcileAll();
+    } catch (e) {
+      debugPrint('Reconcile after exact-alarm permission change failed: $e');
+    }
+    return allowed;
+  }
 
   /// Initializes the notification channel and timezone database.
   Future<void> initialize({String? tzId}) async {
-    // 1. Timezone database initialization
-    try {
-      tz_data.initializeTimeZones();
-      final effectiveTz = tzId ?? timeService.currentTzId();
-      if (effectiveTz.isNotEmpty) {
-        tz.setLocalLocation(tz.getLocation(effectiveTz));
-      }
-    } catch (_) {
-      // Fallback to tz.local when id is empty or unknown
+    // 1. Timezone database initialization (CPU bound) and
+    // 2. Local notifications plugin + channel setup (Platform channels)
+    // are independent of each other and run concurrently via Future.wait.
+    await Future.wait([
+      Future(() {
+        try {
+          tz_data.initializeTimeZones();
+          final effectiveTz = tzId ?? timeService.currentTzId();
+          if (effectiveTz.isNotEmpty) {
+            tz.setLocalLocation(tz.getLocation(effectiveTz));
+          }
+        } catch (_) {
+          // Fallback to tz.local when id is empty or unknown
+        }
+      }),
+      (() async {
+        const androidSettings =
+            AndroidInitializationSettings('@mipmap/ic_launcher');
+        // iOS/macOS were previously absent entirely, which left the plugin
+        // unconfigured on Darwin and every notification silently dropped. The
+        // permission flags here are this plugin's documented default route:
+        // requesting at initialization. `NotificationPermissionHelper` also asks
+        // explicitly, which is idempotent — iOS returns the existing decision
+        // rather than re-prompting.
+        final darwinSettings = DarwinInitializationSettings(
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+          notificationCategories: <DarwinNotificationCategory>[
+            reminderDarwinCategory,
+          ],
+        );
+        final initSettings = InitializationSettings(
+          android: androidSettings,
+          iOS: darwinSettings,
+          macOS: darwinSettings,
+        );
+
+        await _plugin.initialize(
+          settings: initSettings,
+          onDidReceiveNotificationResponse: _handleForegroundResponse,
+          // Action buttons can be tapped with the app terminated, which reaches a
+          // fresh isolate instead of the callback above.
+          onDidReceiveBackgroundNotificationResponse:
+              notificationActionBackgroundHandler,
+        );
+
+        // Notification channel creation
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+          await _android?.createNotificationChannel(reminderChannel);
+        }
+
+        // Exact-alarm capability, so the first schedule of the session already
+        // picks the right mode instead of assuming exact and being downgraded.
+        await refreshExactAlarmCapability();
+      })(),
+    ]);
+  }
+
+  /// Routes a notification response that arrived while the app is alive.
+  ///
+  /// An action button goes to the shared handler; a plain tap keeps the
+  /// existing navigation behaviour.
+  void _handleForegroundResponse(NotificationResponse response) {
+    if (response.actionId != null && response.actionId!.isNotEmpty) {
+      unawaited(_applyActionInForeground(response));
+      return;
     }
+    _dispatchPayload(response.payload);
+  }
 
-    // 2. Local notifications plugin initialization
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidSettings);
-
-    await _plugin.initialize(
-      settings: initSettings,
-      onDidReceiveNotificationResponse: (response) =>
-          _dispatchPayload(response.payload),
-    );
-
-    // 3. Notification channel creation
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      const channel = AndroidNotificationChannel(
-        channelId,
-        channelName,
-        description: 'Reminders for upcoming tasks and habits',
-        importance: Importance.defaultImportance,
+  Future<void> _applyActionInForeground(NotificationResponse response) async {
+    try {
+      await applyNotificationAction(
+        db: db,
+        actionId: response.actionId,
+        payload: response.payload,
+        plugin: _plugin,
+        notificationId: response.id,
+        timeService: timeService,
       );
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(channel);
+    } catch (e) {
+      // A reminder button must never take the app down.
+      debugPrint('Notification action failed: $e');
     }
   }
 
@@ -202,7 +328,18 @@ class ReminderService {
     }
     final dueLocal = timeService.toLocal(task.dueAt!);
     final timeStr = _formatTimeOfDay(dueLocal.hour, dueLocal.minute);
-    final body = projectName != null ? '$projectName • $timeStr' : timeStr;
+    // The due time and project stay verbatim — only the lead-in varies. A
+    // time-sensitive reminder does not trade clarity for personality.
+    final leadIndex = await _nextVariantIndex(
+      taskLeadInLastIndexKey,
+      taskLeadInCount(),
+    );
+    final body = taskReminderBody(
+      timeStr: timeStr,
+      projectName: projectName,
+      templateIndex: leadIndex,
+    );
+    await settingsRepo.setInt(taskLeadInLastIndexKey, leadIndex);
 
     final nowTz = tz.TZDateTime.now(tz.local);
 
@@ -225,8 +362,8 @@ class ReminderService {
         title: task.title,
         body: body,
         scheduledDate: fireTz,
-        notificationDetails: _details,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        notificationDetails: actionableReminderDetails,
+        androidScheduleMode: scheduleMode,
         payload: 'task:${task.id}',
       );
     }
@@ -353,14 +490,24 @@ class ReminderService {
     final streak = snapshot.streaks.current;
     final target = fresh.targetCount;
     final unit = fresh.unitLabel;
-    final String body;
-    if (streak > 0) {
-      body = 'Keep your $streak-day streak going';
-    } else if (target > 1) {
-      body = '$target${unit == null || unit.isEmpty ? '' : ' $unit'} today';
-    } else {
-      body = 'Due today';
-    }
+    // Same three scenarios as before, each now a pool rather than one fixed
+    // line — see `reminder_copy.dart`.
+    final tone = selectHabitReminderTone(
+      currentStreak: streak,
+      targetCount: target,
+    );
+    final variantIndex = await _nextVariantIndex(
+      habitReminderLastIndexKey,
+      habitReminderVariantCount(tone),
+    );
+    final body = habitReminderBody(
+      tone: tone,
+      currentStreak: streak,
+      targetCount: target,
+      unitLabel: unit,
+      templateIndex: variantIndex,
+    );
+    await settingsRepo.setInt(habitReminderLastIndexKey, variantIndex);
 
     for (final row in times) {
       final fireTz = nextHabitFireTime(snapshot, now, row.minutesPastMidnight);
@@ -377,8 +524,8 @@ class ReminderService {
         title: fresh.title,
         body: body,
         scheduledDate: fireTz,
-        notificationDetails: _details,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        notificationDetails: actionableReminderDetails,
+        androidScheduleMode: scheduleMode,
         payload: 'habit:${fresh.id}',
       );
     }
@@ -485,6 +632,23 @@ class ReminderService {
   /// already have. Reconciling runs often enough (startup, every edit, every
   /// resume, the day-rollover watch) that this stays close enough in
   /// practice.
+  ///
+  /// **Recurrence.** Scheduled with `matchDateTimeComponents:
+  /// DateTimeComponents.time`, so the OS repeats it daily at that clock time.
+  /// Per the plugin's documentation the [tz.TZDateTime] passed as
+  /// `scheduledDate` is then only a seed — the plugin fires at the next
+  /// matching wall-clock time, which may be earlier than the date given. That
+  /// is why computing "today, or tomorrow if passed" below is harmless: either
+  /// seed lands on the same daily series.
+  ///
+  /// **Across a timezone change**, the series follows the wall clock of the
+  /// zone the notification was scheduled in, so a device that travels keeps
+  /// firing at the old zone's instant until something reschedules. It cannot
+  /// double-fire or skip a day — the repeat is one series at a fixed interval,
+  /// not a re-derivation per day. The existing reconcile call sites (startup
+  /// and settings changes) re-seed it against [tz.local], which [initialize]
+  /// has just re-pointed at the current zone, so the drift resolves on next
+  /// launch rather than persisting.
   Future<void> reconcileDigest() async {
     for (var i = 0; i < _maxDigestSlots; i++) {
       await _plugin.cancel(id: _digestNotificationId(i));
@@ -500,8 +664,18 @@ class ReminderService {
         : <int>[];
     if (times.isEmpty) return;
 
-    final body = await _digestBody();
-    if (body == null) return;
+    final counts = await _digestBody();
+    if (counts == null) return;
+
+    final digestIndex = await _nextVariantIndex(
+      taskDigestLastIndexKey,
+      taskDigestVariantCount(),
+    );
+    final (digestTitle, digestBody) = taskDigestContent(
+      countsPhrase: counts,
+      templateIndex: digestIndex,
+    );
+    await settingsRepo.setInt(taskDigestLastIndexKey, digestIndex);
 
     final nowTz = tz.TZDateTime.now(tz.local);
     for (var i = 0; i < times.length && i < _maxDigestSlots; i++) {
@@ -520,11 +694,17 @@ class ReminderService {
 
       await _plugin.zonedSchedule(
         id: _digestNotificationId(i),
-        title: 'Today',
-        body: body,
+        title: digestTitle,
+        body: digestBody,
         scheduledDate: fireTz,
-        notificationDetails: _details,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        notificationDetails: digestDetails,
+        androidScheduleMode: scheduleMode,
+        // Daily recurrence handed to the OS. Previously this was a one-shot at
+        // "today at HH:MM, or tomorrow if passed", which only re-armed when
+        // something called back into this method — so a user who did not open
+        // the app simply stopped getting digests. Matching on time alone makes
+        // the OS repeat it every day at that clock time regardless.
+        matchDateTimeComponents: DateTimeComponents.time,
         payload: 'digest',
       );
     }
@@ -637,8 +817,10 @@ class ReminderService {
       title: 'Cairn',
       body: content.body,
       scheduledDate: fireTz,
-      notificationDetails: _details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      notificationDetails: digestDetails,
+      androidScheduleMode: scheduleMode,
+      // Daily recurrence handed to the OS — see [reconcileDigest].
+      matchDateTimeComponents: DateTimeComponents.time,
       payload: 'habit_digest',
     );
   }
@@ -653,11 +835,21 @@ class ReminderService {
   /// completely different sentence, so index 1 of the freeze pool following
   /// index 1 of the streak pool is not a repeat in any sense the reader would
   /// notice.
-  Future<int> _nextHabitDigestIndex(HabitDigestTone tone) async {
-    final count = habitDigestVariantCount(tone);
+  Future<int> _nextHabitDigestIndex(HabitDigestTone tone) =>
+      _nextVariantIndex(habitDigestLastIndexKey, habitDigestVariantCount(tone));
+
+  /// A variant index for the pool recorded under [lastIndexKey] that is not
+  /// the one used last time.
+  ///
+  /// The generalisation of [_nextHabitDigestIndex] onto the task-reminder,
+  /// habit-reminder and task-digest pools, so all four share one anti-repeat
+  /// rule instead of three near-copies. Picks uniformly among the
+  /// alternatives; with a single-variant pool there is no alternative, so it
+  /// repeats rather than looping forever looking for one.
+  Future<int> _nextVariantIndex(String lastIndexKey, int count) async {
     if (count <= 1) return 0;
 
-    final last = await settingsRepo.getInt(habitDigestLastIndexKey);
+    final last = await settingsRepo.getInt(lastIndexKey);
     if (last == null || last < 0 || last >= count) {
       return _random.nextInt(count);
     }

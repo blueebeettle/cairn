@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.0.0+4
+version: 2.1.0+5
 
 environment:
   sdk: ^3.12.0
@@ -34,13 +34,11 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  shared_preferences: ^2.5.5
   flutter_riverpod: ^2.6.1
   google_fonts: ^6.2.1
   drift: ^2.24.2
   drift_flutter: ^0.2.4
   path_provider: ^2.1.5
-  path: ^1.9.1
   flutter_foreground_task: ^11.0.3
   uuid: ^4.5.1
   flutter_timezone: ^5.1.0
@@ -66,6 +64,7 @@ dev_dependencies:
   drift_dev: ^2.24.2
   build_runner: ^2.4.15
   flutter_launcher_icons: ^0.14.4
+  shared_preferences: ^2.5.5
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -119,13 +118,21 @@ flutter:
 # which the system tints to match the user's wallpaper.
 flutter_launcher_icons:
   android: "ic_launcher"
-  ios: false
+  ios: true
   image_path: "assets/icon/cairn_icon.png"
   min_sdk_android: 21
   adaptive_icon_background: "#590D86"
   adaptive_icon_foreground: "assets/icon/cairn_foreground.png"
   adaptive_icon_monochrome: "assets/icon/cairn_monochrome.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/cairn_icon.png"
   windows:
     generate: true
     image_path: "assets/icon/cairn_icon.png"
     icon_size: 256
+  web:
+    generate: true
+    image_path: "assets/icon/cairn_icon.png"
+    background_color: "#590D86"
+    theme_color: "#590D86"
