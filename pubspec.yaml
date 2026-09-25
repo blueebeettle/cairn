@@ -116,14 +116,20 @@ flutter:
 # composites it over adaptive_icon_background and crops to whatever shape the
 # launcher uses. adaptive_icon_monochrome is the Android 13+ themed-icon layer,
 # which the system tints to match the user's wallpaper.
+#
+# Both point at the cairn_adaptive_* pair, not the plain cairn_foreground /
+# cairn_monochrome files every other platform uses: the approved square
+# composition sits ~76px high of centre, which reads as off-centre once Android
+# masks it to a circle. The adaptive pair is the same artwork translated onto
+# the canvas centre. Both are generated -- see tool/generate_brand_assets.py.
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
   image_path: "assets/icon/cairn_icon.png"
   min_sdk_android: 21
-  adaptive_icon_background: "#590D86"
-  adaptive_icon_foreground: "assets/icon/cairn_foreground.png"
-  adaptive_icon_monochrome: "assets/icon/cairn_monochrome.png"
+  adaptive_icon_background: "#FAF3F0"
+  adaptive_icon_foreground: "assets/icon/cairn_adaptive_foreground.png"
+  adaptive_icon_monochrome: "assets/icon/cairn_adaptive_monochrome.png"
   macos:
     generate: true
     image_path: "assets/icon/cairn_icon.png"
@@ -134,5 +140,5 @@ flutter_launcher_icons:
   web:
     generate: true
     image_path: "assets/icon/cairn_icon.png"
-    background_color: "#590D86"
-    theme_color: "#590D86"
+    background_color: "#FAF3F0"
+    theme_color: "#FAF3F0"
