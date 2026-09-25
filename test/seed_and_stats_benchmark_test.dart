@@ -11,6 +11,8 @@ import 'package:habit_tracker/data/repositories/events_repository.dart';
 import 'package:habit_tracker/data/repositories/habits_repository.dart';
 import 'package:habit_tracker/data/repositories/habit_analytics_repository.dart';
 import 'package:habit_tracker/data/repositories/settings_repository.dart';
+import 'package:habit_tracker/data/repositories/stats_repository.dart';
+import 'package:habit_tracker/data/repositories/tasks_repository.dart';
 
 void main() {
   test('POLISH §8 — Seed 2 Years, Measure Stats Queries & Range Lags', () async {
@@ -24,6 +26,13 @@ void main() {
       settings: settingsRepo,
     );
     final habitsRepo = HabitsRepository(
+      db: db,
+      eventsRepository: eventsRepo,
+      timeService: timeService,
+      deviceId: 'bench-device-1',
+    );
+    final statsRepo = StatsRepository(db: db, timeService: timeService);
+    final tasksRepo = TasksRepository(
       db: db,
       eventsRepository: eventsRepo,
       timeService: timeService,
@@ -124,6 +133,40 @@ void main() {
     final habitThresholds = await habitAnalyticsRepo.heatmapThresholds(todayLocalDate: today);
     habitThresholdsSw.stop();
     print('   • Habit Heatmap thresholds calculation: ${habitThresholdsSw.elapsedMicroseconds / 1000.0}ms (provisional: ${habitThresholds.provisional}, days: ${habitThresholds.nonZeroDayCount})');
+
+    // 4b. Measure windowed Stats & Tasks query performance
+    print('\n4b. Windowed Stats & Tasks Query Durations:');
+    final last7DaysSw = Stopwatch()..start();
+    final last7Days = await statsRepo.watchLast7DaysSummary().first;
+    last7DaysSw.stop();
+    print('   • StatsRepository.watchLast7DaysSummary (7 days windowed): ${last7DaysSw.elapsedMicroseconds / 1000.0}ms (${last7Days.length} days)');
+
+    final throughputSw = Stopwatch()..start();
+    final throughput = await statsRepo.getThroughput(
+      localDates: {for (var i = 0; i < 7; i++) TimeService.addDays(today, -i)},
+    );
+    throughputSw.stop();
+    print('   • StatsRepository.getThroughput (SQL date filtered): ${throughputSw.elapsedMicroseconds / 1000.0}ms (created: ${throughput.created}, completed: ${throughput.completed})');
+
+    final todayTasksSw = Stopwatch()..start();
+    final todayTasks = await tasksRepo.watchTodayTasks(today).first;
+    todayTasksSw.stop();
+    print('   • TasksRepository.watchTodayTasks (indexed & scoped): ${todayTasksSw.elapsedMicroseconds / 1000.0}ms (${todayTasks.length} tasks)');
+
+    final upcomingTasksSw = Stopwatch()..start();
+    final upcomingTasks = await tasksRepo.watchUpcomingTasks(today).first;
+    upcomingTasksSw.stop();
+    print('   • TasksRepository.watchUpcomingTasks (indexed & scoped): ${upcomingTasksSw.elapsedMicroseconds / 1000.0}ms (${upcomingTasks.length} tasks)');
+
+    final inboxTasksSw = Stopwatch()..start();
+    final inboxTasks = await tasksRepo.watchInboxTasks().first;
+    inboxTasksSw.stop();
+    print('   • TasksRepository.watchInboxTasks (indexed & scoped): ${inboxTasksSw.elapsedMicroseconds / 1000.0}ms (${inboxTasks.length} tasks)');
+
+    final archivedTasksSw = Stopwatch()..start();
+    final archivedTasks = await tasksRepo.watchArchivedTasks().first;
+    archivedTasksSw.stop();
+    print('   • TasksRepository.watchArchivedTasks (indexed & scoped): ${archivedTasksSw.elapsedMicroseconds / 1000.0}ms (${archivedTasks.length} tasks)');
 
     // 5. Wipe duration
     print('\n5. Database wipe...');

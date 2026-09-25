@@ -280,7 +280,10 @@ class AnalyticsRepository {
   ///
   /// The cache is keyed by the start of the current week, so it expires by
   /// being from a different week rather than by storing a timestamp and doing
-  /// arithmetic on it.
+  /// arithmetic on it. Once non-provisional thresholds exist, they are cached
+  /// for the remainder of the week; provisional cache entries are treated as
+  /// invalid so the user can promote to the real scale mid-week as soon as
+  /// they reach 14 non-zero days.
   Future<HeatmapThresholds> heatmapThresholds({
     required String todayLocalDate,
     bool forceRecompute = false,
@@ -308,11 +311,13 @@ class AnalyticsRepository {
     return thresholds;
   }
 
-  /// Returns null when the cache is absent, stale, or malformed.
+  /// Returns null when the cache is absent, stale, malformed, or provisional.
   ///
   /// Malformed counts as absent on purpose: a half-written or hand-edited
   /// settings row should cost one recomputation, not throw on the way into the
-  /// Stats screen.
+  /// Stats screen. A provisional cache entry is also treated as invalid so the
+  /// threshold computation can promote to the real scale as soon as the data
+  /// supports it mid-week.
   static HeatmapThresholds? _readCachedThresholds(Object? cached, String weekKey) {
     if (cached is! Map) return null;
     if (cached['week'] != weekKey) return null;
@@ -324,12 +329,14 @@ class AnalyticsRepository {
     if (l1 is! int || l2 is! int || l3 is! int || l4 is! int || n is! int) {
       return null;
     }
+    final provisional = cached['provisional'] == true;
+    if (provisional) return null;
     return HeatmapThresholds(
       level1Max: l1,
       level2Max: l2,
       level3Max: l3,
       level4Nominal: l4,
-      provisional: cached['provisional'] == true,
+      provisional: false,
       nonZeroDayCount: n,
     );
   }

@@ -17,6 +17,9 @@ import 'package:habit_tracker/data/repositories/habits_repository.dart';
 import 'package:habit_tracker/data/repositories/settings_repository.dart';
 import 'package:habit_tracker/data/repositories/tasks_repository.dart';
 import 'package:habit_tracker/data/repositories/timer_repository.dart';
+import 'package:habit_tracker/features/reminders/notification_action_handler.dart';
+import 'package:habit_tracker/features/reminders/notification_channels.dart';
+import 'package:habit_tracker/features/reminders/reminder_copy.dart';
 import 'package:habit_tracker/features/reminders/reminder_service.dart';
 import 'package:habit_tracker/features/settings/presentation/settings_screen.dart';
 import 'package:habit_tracker/features/tasks/presentation/widgets/task_detail_sheet.dart';
@@ -29,15 +32,41 @@ import 'package:timezone/timezone.dart' as tz;
 /// Fake plugin to verify flutter_local_notifications calls without platform channels.
 class FakeFlutterLocalNotificationsPlugin implements FlutterLocalNotificationsPlugin {
   final Map<int, ZonedScheduleCall> scheduledNotifications = {};
+
+  /// Every zonedSchedule call in order, including ones later cancelled — the
+  /// id-keyed map above loses a reschedule's history.
+  final List<ZonedScheduleCall> scheduleLog = [];
   final List<int> cancelledIds = [];
   bool allCancelled = false;
+
+  /// Captured from [initialize], so a test can assert iOS was configured.
+  InitializationSettings? initializationSettings;
+  DidReceiveBackgroundNotificationResponseCallback? backgroundHandler;
+
+  Duration initDelay = Duration.zero;
+  bool isInitializing = false;
+  bool initializeCalled = false;
+  DateTime? initializeStartTime;
+  DateTime? initializeEndTime;
 
   @override
   Future<bool?> initialize({
     required InitializationSettings settings,
     DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
     DidReceiveBackgroundNotificationResponseCallback? onDidReceiveBackgroundNotificationResponse,
-  }) async => true;
+  }) async {
+    initializeCalled = true;
+    isInitializing = true;
+    initializeStartTime = DateTime.now();
+    if (initDelay > Duration.zero) {
+      await Future.delayed(initDelay);
+    }
+    initializationSettings = settings;
+    backgroundHandler = onDidReceiveBackgroundNotificationResponse;
+    initializeEndTime = DateTime.now();
+    isInitializing = false;
+    return true;
+  }
 
   @override
   Future<void> zonedSchedule({
@@ -56,7 +85,11 @@ class FakeFlutterLocalNotificationsPlugin implements FlutterLocalNotificationsPl
       body: body,
       scheduledDate: scheduledDate,
       payload: payload,
+      androidScheduleMode: androidScheduleMode,
+      matchDateTimeComponents: matchDateTimeComponents,
+      notificationDetails: notificationDetails,
     );
+    scheduleLog.add(scheduledNotifications[id]!);
   }
 
   @override
@@ -97,12 +130,26 @@ class ZonedScheduleCall {
   final tz.TZDateTime scheduledDate;
   final String? payload;
 
+  /// Captured so tests can assert exact-vs-inexact scheduling (Requirement A).
+  final AndroidScheduleMode? androidScheduleMode;
+
+  /// Captured so tests can assert true OS-level daily recurrence
+  /// (Requirement B).
+  final DateTimeComponents? matchDateTimeComponents;
+
+  /// Captured so tests can assert importance/priority and action buttons
+  /// (Requirement D).
+  final NotificationDetails? notificationDetails;
+
   ZonedScheduleCall({
     required this.id,
     this.title,
     this.body,
     required this.scheduledDate,
     this.payload,
+    this.androidScheduleMode,
+    this.matchDateTimeComponents,
+    this.notificationDetails,
   });
 }
 
@@ -874,6 +921,128 @@ void main() {
           reason: 'the task digest still schedules');
       expect(scheduled(), isNotNull);
     });
+
+    // ───────────────── Requirements A & B, on the habit-side call sites ──
+
+    test('Habit reminders request exact mode', () async {
+      final harnessTime = TimeService(
+        localize: (ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
+        offsetMinutesAt: (_) => 0,
+        tzIdProvider: () => 'UTC',
+        nowProvider: () => nowMs,
+      );
+      final id = await seedStreak();
+      // A reminder late enough on the harness day to still be in the future
+      // at noon, so `nextHabitFireTime` returns today rather than skipping on.
+      await ReminderConfigRepository(
+        db: hdDb,
+        eventsRepository: EventsRepository(
+          db: hdDb,
+          timeService: harnessTime,
+          deviceId: 'test',
+        ),
+        settingsRepo: hdSettings,
+        timeService: harnessTime,
+        deviceId: 'test',
+      ).setHabitReminderTimes(id, [21 * 60]);
+      hdPlugin.scheduleLog.clear();
+
+      await hdService.scheduleForHabit(
+        (await hdHabits.loadSnapshot(id))!.habit,
+      );
+
+      expect(hdPlugin.scheduleLog, isNotEmpty,
+          reason: 'the habit reminder must actually be scheduled');
+      for (final call in hdPlugin.scheduleLog) {
+        expect(call.androidScheduleMode,
+            equals(AndroidScheduleMode.exactAllowWhileIdle));
+      }
+    });
+
+    test('Habit digest requests exact mode', () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled()!.androidScheduleMode,
+          equals(AndroidScheduleMode.exactAllowWhileIdle));
+    });
+
+    test('Habit digest recurs daily at the OS level', () async {
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+
+      await hdService.reconcileHabitDigest();
+
+      expect(scheduled()!.matchDateTimeComponents,
+          equals(DateTimeComponents.time),
+          reason: 'a one-shot digest stops forever if the app is not reopened');
+    });
+
+    test('Task digest recurs daily at the OS level', () async {
+      final harnessTime = TimeService(
+        localize: (ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
+        offsetMinutesAt: (_) => 0,
+        tzIdProvider: () => 'UTC',
+        nowProvider: () => nowMs,
+      );
+      final hdTasks = TasksRepository(
+        db: hdDb,
+        eventsRepository: EventsRepository(
+          db: hdDb,
+          timeService: harnessTime,
+          deviceId: 'test',
+        ),
+        timeService: harnessTime,
+      );
+      setNow(wednesday);
+      await hdTasks.createTask(
+        title: 'All-day task due today',
+        dueAt: at(wednesday, 10),
+        dueIsAllDay: true,
+      );
+      await hdSettings.setBool('digest_enabled', true);
+      await hdSettings.set('digest_times_min', [9 * 60]);
+
+      await hdService.reconcileDigest();
+
+      expect(hdPlugin.scheduledNotifications[1]!.matchDateTimeComponents,
+          equals(DateTimeComponents.time));
+    });
+
+    test('A day rollover with the app never reopened leaves the digest armed',
+        () async {
+      // The bug this replaces: the digest was a one-shot re-armed only by
+      // `reconcileAll`/`_checkDay`, so a user who did not open the app the
+      // next day got no further digest, ever. Recurrence now belongs to the
+      // OS, so the proof is that the pending schedule survives a day rollover
+      // with nothing calling back into the service.
+      await seedStreak();
+      await hdSettings.setBool('habit_digest_enabled', true);
+      await hdService.reconcileHabitDigest();
+
+      final armed = scheduled()!;
+      expect(armed.matchDateTimeComponents, equals(DateTimeComponents.time));
+
+      final callsBefore = hdPlugin.scheduleLog.length;
+
+      // Roll the clock forward a full day. Deliberately no reconcile call of
+      // any kind afterwards — that is the whole point.
+      setNow(TimeService.addDays(wednesday, 1));
+
+      // Nothing re-armed it, and it is still registered as a daily repeat.
+      // Under the old one-shot model the next day's digest existed only if
+      // something called reconcile here; now the single call above is enough.
+      expect(hdPlugin.scheduleLog, hasLength(callsBefore),
+          reason: 'no reschedule may be required after a rollover');
+      final stillArmed = scheduled();
+      expect(stillArmed, isNotNull,
+          reason: 'the OS-level repeat must outlive the app being closed');
+      expect(stillArmed!.matchDateTimeComponents,
+          equals(DateTimeComponents.time));
+      expect(await hdPlugin.pendingNotificationRequests(), isNotEmpty);
+    });
   });
 
   group('Part C — Permission Pre-Dialog & UI Controls', () {
@@ -1127,6 +1296,458 @@ void main() {
       expect(find.text('Remind me'), findsOneWidget);
       expect(find.text('10m before'), findsOneWidget);
       expect(find.text('Add reminder'), findsOneWidget);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Part D — Notification reliability & engagement
+  // ══════════════════════════════════════════════════════════════════════
+
+  group('Part D1 — Exact scheduling & engagement (Requirements A, D8, D9)', () {
+    /// A dated task, with the schedule log cleared afterwards.
+    ///
+    /// `tasksRepo` is wired to `reminderService`, so creating a task already
+    /// schedules its reminder; clearing here leaves the explicit
+    /// `scheduleFor` under test as the only recorded call.
+    Future<Task> timedTask({int hours = 3}) async {
+      final task = await tasksRepo.createTask(
+        title: 'Timed task',
+        dueAt:
+            DateTime.now().add(Duration(hours: hours)).millisecondsSinceEpoch,
+      );
+      fakePlugin.scheduleLog.clear();
+      return task;
+    }
+
+    test('Task reminders request exact mode, not inexact', () async {
+      await reminderService.scheduleFor(await timedTask());
+
+      expect(fakePlugin.scheduleLog.single.androidScheduleMode,
+          equals(AndroidScheduleMode.exactAllowWhileIdle));
+    });
+
+    test('Task digest requests exact mode', () async {
+      await tasksRepo.createTask(
+        title: 'All-day task due today',
+        dueAt: DateTime.now().millisecondsSinceEpoch,
+        dueIsAllDay: true,
+      );
+      await settingsRepo.setBool('digest_enabled', true);
+      await settingsRepo.set('digest_times_min', [9 * 60]);
+
+      await reminderService.reconcileDigest();
+
+      expect(fakePlugin.scheduledNotifications[1]!.androidScheduleMode,
+          equals(AndroidScheduleMode.exactAllowWhileIdle));
+    });
+
+    test('A declined exact-alarm permission degrades to inexact rather than '
+        'scheduling nothing', () async {
+      reminderService.exactAlarmsAllowedForTest = false;
+
+      await reminderService.scheduleFor(await timedTask());
+
+      expect(fakePlugin.scheduleLog.single.androidScheduleMode,
+          equals(AndroidScheduleMode.inexactAllowWhileIdle),
+          reason: 'must degrade, not drop');
+      expect(fakePlugin.scheduledNotifications, isNotEmpty,
+          reason: 'the reminder must still exist');
+    });
+
+    test('Reminders are high importance so they surface as a heads-up banner',
+        () async {
+      await reminderService.scheduleFor(await timedTask());
+
+      final android = fakePlugin.scheduleLog.single.notificationDetails!.android!;
+      expect(android.importance, equals(Importance.high));
+      expect(android.priority, equals(Priority.high));
+    });
+
+    test('Task reminders carry Mark done and Snooze actions; digests do not',
+        () async {
+      await reminderService.scheduleFor(await timedTask());
+      final actions =
+          fakePlugin.scheduleLog.single.notificationDetails!.android!.actions!;
+      expect(actions.map((a) => a.id),
+          containsAll(<String>[actionMarkDone, actionSnooze]));
+
+      await settingsRepo.setBool('digest_enabled', true);
+      await settingsRepo.set('digest_times_min', [9 * 60]);
+      await reminderService.reconcileDigest();
+      expect(
+        fakePlugin.scheduledNotifications[1]!.notificationDetails!.android!.actions,
+        anyOf(isNull, isEmpty),
+        reason: 'a digest summarises several items, so Mark done is ambiguous',
+      );
+    });
+  });
+
+  group('Part D2 — iOS initialization (Requirement C)', () {
+    test('initialize() constructs and passes DarwinInitializationSettings',
+        () async {
+      final settings = fakePlugin.initializationSettings;
+      expect(settings, isNotNull);
+      expect(settings!.iOS, isNotNull,
+          reason: 'iOS was previously never configured, so nothing fired');
+      expect(settings.iOS!.requestAlertPermission, isTrue);
+      expect(settings.iOS!.requestBadgePermission, isTrue);
+      expect(settings.iOS!.requestSoundPermission, isTrue);
+    });
+
+    test('The Darwin category carries the same two action buttons', () async {
+      final categories =
+          fakePlugin.initializationSettings!.iOS!.notificationCategories;
+      expect(categories, hasLength(1));
+      expect(
+        categories.single.actions.map((a) => a.identifier),
+        containsAll(<String>[actionMarkDone, actionSnooze]),
+      );
+    });
+
+    test('A background action handler is registered for terminated-app taps',
+        () async {
+      expect(fakePlugin.backgroundHandler, isNotNull);
+    });
+  });
+
+  group('Part D3 — Notification actions (Requirement D9)', () {
+    test('Mark done on a task reminder completes that task', () async {
+      final task = await tasksRepo.createTask(title: 'Buy milk');
+
+      final result = await applyNotificationAction(
+        db: db,
+        actionId: actionMarkDone,
+        payload: 'task:${task.id}',
+        timeService: timeService,
+      );
+
+      expect(result, equals(NotificationActionResult.markedDone));
+      expect((await tasksRepo.getTask(task.id))!.status, equals('done'));
+    });
+
+    test('Mark done acts on the named task only', () async {
+      final target = await tasksRepo.createTask(title: 'Target');
+      final other = await tasksRepo.createTask(title: 'Other');
+
+      await applyNotificationAction(
+        db: db,
+        actionId: actionMarkDone,
+        payload: 'task:${target.id}',
+        timeService: timeService,
+      );
+
+      expect((await tasksRepo.getTask(target.id))!.status, equals('done'));
+      expect((await tasksRepo.getTask(other.id))!.status, equals('open'));
+    });
+
+    test('Mark done on a habit reminder checks that habit off', () async {
+      final habitsRepo = HabitsRepository(
+        db: db,
+        eventsRepository: eventsRepo,
+        timeService: timeService,
+        deviceId: 'test',
+      );
+      final id = await habitsRepo.createHabit(
+        title: 'Read',
+        scheduleRule: 'FREQ=DAILY',
+      );
+
+      final result = await applyNotificationAction(
+        db: db,
+        actionId: actionMarkDone,
+        payload: 'habit:$id',
+        timeService: timeService,
+      );
+
+      expect(result, equals(NotificationActionResult.markedDone));
+      expect((await habitsRepo.loadSnapshot(id))!.isDoneToday, isTrue);
+    });
+
+    test('A deleted task no-ops instead of crashing', () async {
+      final task = await tasksRepo.createTask(title: 'Doomed');
+      await tasksRepo.deleteTask(task.id);
+
+      expect(
+        await applyNotificationAction(
+          db: db,
+          actionId: actionMarkDone,
+          payload: 'task:${task.id}',
+          timeService: timeService,
+        ),
+        equals(NotificationActionResult.ignored),
+      );
+    });
+
+    test('An unknown id no-ops instead of crashing', () async {
+      expect(
+        await applyNotificationAction(
+          db: db,
+          actionId: actionMarkDone,
+          payload: 'task:does-not-exist',
+          timeService: timeService,
+        ),
+        equals(NotificationActionResult.ignored),
+      );
+    });
+
+    test('Malformed and non-action payloads are rejected', () async {
+      for (final payload in <String?>[
+        null,
+        '',
+        'task:',
+        'habit:',
+        'digest',
+        'habit_digest',
+        'nonsense',
+        'TASK:abc',
+      ]) {
+        expect(
+          await applyNotificationAction(
+            db: db,
+            actionId: actionMarkDone,
+            payload: payload,
+            timeService: timeService,
+          ),
+          equals(NotificationActionResult.ignored),
+          reason: 'payload: $payload',
+        );
+      }
+    });
+
+    test('An unrecognised action id no-ops even on a valid task', () async {
+      final task = await tasksRepo.createTask(title: 'Safe');
+
+      expect(
+        await applyNotificationAction(
+          db: db,
+          actionId: 'delete_everything',
+          payload: 'task:${task.id}',
+          timeService: timeService,
+        ),
+        equals(NotificationActionResult.ignored),
+      );
+      expect((await tasksRepo.getTask(task.id))!.status, equals('open'));
+    });
+
+    test('Snooze reschedules the reminder instead of completing it', () async {
+      final task = await tasksRepo.createTask(title: 'Later');
+
+      final result = await applyNotificationAction(
+        db: db,
+        actionId: actionSnooze,
+        payload: 'task:${task.id}',
+        plugin: fakePlugin,
+        notificationId: 4242,
+        timeService: timeService,
+      );
+
+      expect(result, equals(NotificationActionResult.snoozed));
+      expect((await tasksRepo.getTask(task.id))!.status, equals('open'),
+          reason: 'snooze must not complete the task');
+      final call = fakePlugin.scheduledNotifications[4242]!;
+      expect(call.payload, equals('task:${task.id}'));
+      final deltaMs =
+          call.scheduledDate.millisecondsSinceEpoch - timeService.nowUtcMs();
+      expect(deltaMs, greaterThan(14 * 60 * 1000));
+      expect(deltaMs, lessThanOrEqualTo(15 * 60 * 1000 + 5000));
+    });
+
+    test('parseNotificationTarget extracts subject and id', () {
+      expect(parseNotificationTarget('task:abc'),
+          equals(const NotificationTarget(NotificationSubject.task, 'abc')));
+      expect(parseNotificationTarget('habit:xyz'),
+          equals(const NotificationTarget(NotificationSubject.habit, 'xyz')));
+      expect(parseNotificationTarget('digest'), isNull);
+    });
+  });
+
+  group('Part D4 — Copy variety (Requirement D10)', () {
+    test('Task reminder keeps the due time and project, varying only the '
+        'lead-in', () {
+      final body = taskReminderBody(
+        timeStr: '3:30 PM',
+        projectName: 'Home',
+        templateIndex: 0,
+      );
+      expect(body, contains('3:30 PM'));
+      expect(body, contains('Home'));
+    });
+
+    test('Task reminder omits an absent project rather than leaving a gap', () {
+      final body = taskReminderBody(
+        timeStr: '9:00 AM',
+        projectName: null,
+        templateIndex: 1,
+      );
+      expect(body, contains('9:00 AM'));
+      expect(body, isNot(contains('•')));
+    });
+
+    test('Every task lead-in produces a distinct line', () {
+      final seen = <String>{};
+      for (var i = 0; i < taskLeadInCount(); i++) {
+        seen.add(taskReminderBody(timeStr: '1:00 PM', templateIndex: i));
+      }
+      expect(seen, hasLength(taskLeadInCount()));
+    });
+
+    test('An out-of-range template index wraps instead of throwing', () {
+      expect(() => taskReminderBody(timeStr: '1:00 PM', templateIndex: 99),
+          returnsNormally);
+      expect(() => taskReminderBody(timeStr: '1:00 PM', templateIndex: -1),
+          returnsNormally);
+    });
+
+    test('Task reminders never repeat the previous lead-in', () async {
+      final task = await tasksRepo.createTask(
+        title: 'Recurring check',
+        dueAt:
+            DateTime.now().add(const Duration(hours: 5)).millisecondsSinceEpoch,
+      );
+
+      String? previous;
+      for (var i = 0; i < 12; i++) {
+        fakePlugin.scheduleLog.clear();
+        await reminderService.scheduleFor(task);
+        final body = fakePlugin.scheduleLog.single.body!;
+        expect(body, isNot(equals(previous)), reason: 'run $i repeated a line');
+        previous = body;
+      }
+    });
+
+    test('Task digest never repeats the previous phrasing', () async {
+      await tasksRepo.createTask(
+        title: 'All-day task due today',
+        dueAt: DateTime.now().millisecondsSinceEpoch,
+        dueIsAllDay: true,
+      );
+      await settingsRepo.setBool('digest_enabled', true);
+      await settingsRepo.set('digest_times_min', [9 * 60]);
+
+      String? previous;
+      for (var i = 0; i < 12; i++) {
+        await reminderService.reconcileDigest();
+        final call = fakePlugin.scheduledNotifications[1]!;
+        final line = '${call.title}|${call.body}';
+        expect(line, isNot(equals(previous)), reason: 'run $i repeated a line');
+        previous = line;
+      }
+    });
+
+    test('Task digest keeps the counts phrase intact in every variant', () {
+      for (var i = 0; i < taskDigestVariantCount(); i++) {
+        final (title, body) = taskDigestContent(
+          countsPhrase: '3 due today · 1 overdue',
+          templateIndex: i,
+        );
+        expect(title, isNotEmpty);
+        expect(body, contains('3 due today · 1 overdue'));
+      }
+    });
+
+    test('Habit reminder tone selection matches the previous branch order', () {
+      expect(selectHabitReminderTone(currentStreak: 4, targetCount: 3),
+          equals(HabitReminderTone.streak));
+      expect(selectHabitReminderTone(currentStreak: 0, targetCount: 3),
+          equals(HabitReminderTone.targetCount));
+      expect(selectHabitReminderTone(currentStreak: 0, targetCount: 1),
+          equals(HabitReminderTone.dueToday));
+    });
+
+    test('Habit reminder renders the streak and the target with its unit', () {
+      expect(
+        habitReminderBody(
+          tone: HabitReminderTone.streak,
+          currentStreak: 7,
+          targetCount: 1,
+          templateIndex: 0,
+        ),
+        contains('7'),
+      );
+      expect(
+        habitReminderBody(
+          tone: HabitReminderTone.targetCount,
+          currentStreak: 0,
+          targetCount: 3,
+          unitLabel: 'glasses',
+          templateIndex: 0,
+        ),
+        contains('3 glasses'),
+      );
+    });
+
+    test('Every habit reminder variant within a tone is distinct', () {
+      for (final tone in HabitReminderTone.values) {
+        final seen = <String>{};
+        for (var i = 0; i < habitReminderVariantCount(tone); i++) {
+          seen.add(habitReminderBody(
+            tone: tone,
+            currentStreak: 5,
+            targetCount: 3,
+            templateIndex: i,
+          ));
+        }
+        expect(seen, hasLength(habitReminderVariantCount(tone)),
+            reason: '$tone has duplicate lines');
+      }
+    });
+  });
+
+  group('ReminderService — Initialization Parallelization', () {
+    test('ReminderService.initialize runs timezone setup and plugin setup concurrently', () async {
+      final fake = FakeFlutterLocalNotificationsPlugin();
+      const delay = Duration(milliseconds: 100);
+      fake.initDelay = delay;
+
+      var tzBranchExecutedWhilePluginInFlight = false;
+      DateTime? tzBranchExecutedAt;
+
+      final localTimeService = TimeService(
+        tzIdProvider: () {
+          tzBranchExecutedAt = DateTime.now();
+          if (fake.isInitializing) {
+            tzBranchExecutedWhilePluginInFlight = true;
+          }
+          return 'America/Edmonton';
+        },
+      );
+
+      final service = ReminderService(
+        db: db,
+        settingsRepo: settingsRepo,
+        timeService: localTimeService,
+        plugin: fake,
+      );
+
+      final sw = Stopwatch()..start();
+      await service.initialize();
+      sw.stop();
+
+      // 1. Structural concurrency: ensure the timezone setup closure ran while the
+      // fake plugin's initialize() future was active and awaiting its delay.
+      expect(fake.initializeCalled, isTrue);
+      expect(tzBranchExecutedAt, isNotNull);
+      expect(fake.initializeStartTime, isNotNull);
+      expect(fake.initializeEndTime, isNotNull);
+      expect(
+        tzBranchExecutedWhilePluginInFlight,
+        isTrue,
+        reason: 'Timezone initialization closure must run concurrently while plugin initialize() is in-flight',
+      );
+      expect(
+        tzBranchExecutedAt!.isBefore(fake.initializeEndTime!),
+        isTrue,
+        reason: 'Timezone setup should execute before plugin initialize() finishes',
+      );
+
+      // 2. Wall-clock timing: with 100ms plugin delay running concurrently with timezone init,
+      // total elapsed time should be bounded closely around the single delay (~100-140ms),
+      // rather than the sequential sum.
+      expect(
+        sw.elapsedMilliseconds,
+        lessThan(160),
+        reason: 'Concurrent initialization (${sw.elapsedMilliseconds}ms) should complete in noticeably less time than sequential sum',
+      );
     });
   });
 }

@@ -1,6 +1,10 @@
 import 'package:drift/drift.dart';
 
 /// Tasks table (SPEC.md §2.4) — read model derived from events.
+@TableIndex(name: 'tasks_status_idx', columns: {#status})
+@TableIndex(name: 'tasks_parent_id_idx', columns: {#parentId})
+@TableIndex(name: 'tasks_due_at_idx', columns: {#dueAt})
+@TableIndex(name: 'tasks_completed_local_date_idx', columns: {#completedLocalDate})
 class Tasks extends Table {
   /// Task identifier (UUID string).
   TextColumn get id => text()();

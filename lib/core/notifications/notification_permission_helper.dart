@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../data/repositories/settings_repository.dart';
 
@@ -88,7 +89,42 @@ class NotificationPermissionHelper {
       }
     }
 
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return _requestDarwinPermission();
+    }
+
+    // Desktop platforms other than macOS need no runtime grant.
     return true;
+  }
+
+  /// Requests the Darwin alert/badge/sound grant through the notifications
+  /// plugin.
+  ///
+  /// This branch used to fall through to `return true`, so iOS reported
+  /// permission it had never asked for and every scheduled notification was
+  /// silently dropped. iOS only shows the system prompt once — later calls
+  /// return the standing decision rather than re-prompting — so this is safe
+  /// to call alongside the request made at plugin initialization.
+  static Future<bool> _requestDarwinPermission() async {
+    final plugin = FlutterLocalNotificationsPlugin();
+    try {
+      final granted = defaultTargetPlatform == TargetPlatform.iOS
+          ? await plugin
+              .resolvePlatformSpecificImplementation<
+                  IOSFlutterLocalNotificationsPlugin>()
+              ?.requestPermissions(alert: true, badge: true, sound: true)
+          : await plugin
+              .resolvePlatformSpecificImplementation<
+                  MacOSFlutterLocalNotificationsPlugin>()
+              ?.requestPermissions(alert: true, badge: true, sound: true);
+      // A null resolution means the platform implementation is unavailable
+      // (unit tests, an unsupported host); treat that as "not denied" rather
+      // than blocking the caller.
+      return granted ?? true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Settings key recording that the "you just made your first thing" prompt

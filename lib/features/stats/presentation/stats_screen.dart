@@ -15,7 +15,6 @@ import '../../../data/providers/database_provider.dart';
 import '../../../data/providers/habit_analytics_providers.dart';
 import '../../../data/providers/habit_providers.dart';
 import '../../../data/repositories/analytics_repository.dart';
-import '../../../data/repositories/habits_repository.dart';
 import '../../../data/repositories/stats_repository.dart';
 import '../../../features/habits/presentation/widgets/habit_milestone.dart';
 import '../../../theme/app_theme.dart';
@@ -43,25 +42,12 @@ class StatsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final range = ref.watch(statsRangeProvider);
     final bundleAsync = ref.watch(statsBundleProvider);
-    final heatmapAsync = ref.watch(heatmapProvider);
-    final thresholdsAsync = ref.watch(heatmapThresholdsProvider);
-    final milestoneDatesAsync = ref.watch(focusMilestoneDatesProvider);
-    final trendAsync = ref.watch(statsTrendProvider);
-    final focusStatsAsync = ref.watch(focusStatsProvider);
-
-    final habitBundleAsync = ref.watch(habitStatsBundleProvider);
-    final habitSnapshotsAsync = ref.watch(habitSnapshotsProvider);
-
-    final time = ref.watch(timeServiceProvider);
-    // The journey trail scores each week against seven days of this.
-    final dailyGoalMinutes = ref.watch(dailyGoalMinutesProvider);
-
-    // Whether the habits half has anything to show at all. Gated on whether
-    // any habit currently exists (`activeHabitCount`), not on whether the
-    // selected range has habit data in it — a brand-new habit with no history
-    // yet still deserves tiles that read em dashes, not a screen that decides
-    // it has nothing to say.
-    final hasHabits = (habitBundleAsync.valueOrNull?.activeHabitCount ?? 0) > 0;
+    final hasAnyData = ref.watch(
+      statsBundleProvider.select((b) => b.valueOrNull?.hasAnyData ?? false),
+    );
+    final hasHabits = ref.watch(
+      habitStatsBundleProvider.select((s) => (s.valueOrNull?.activeHabitCount ?? 0) > 0),
+    );
 
     final colors = context.colors;
     final textTheme = Theme.of(context).textTheme;
@@ -98,63 +84,23 @@ class StatsScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            data: (bundle) {
-              if (!bundle.hasAnyData && !hasHabits) {
+            data: (_) {
+              if (!hasAnyData && !hasHabits) {
                 return _buildWholeScreenEmptyState(context);
               }
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Renders even with no focus sessions in the period: the
-                  // rate falls to an em dash and the streak line still reads
-                  // correctly off a zero streak.
-                  _buildHeroCard(
-                    context,
-                    range: range,
-                    bundle: bundle,
-                    trendAsync: trendAsync,
-                    focusStatsAsync: focusStatsAsync,
-                  ),
-
-                  // The trail is genuinely period-scoped — it draws one
-                  // column per week of the selected range — so an empty
-                  // period means an empty trail, and it stays out of the way.
-                  if (bundle.hasAnyData) ...[
+                  Consumer(builder: (context, ref, _) => _buildHeroCard(context, ref)),
+                  if (hasAnyData) ...[
                     const SizedBox(height: 14),
-                    _buildJourneyCard(
-                      context,
-                      bundle: bundle,
-                      time: time,
-                      dailyGoalMinutes: dailyGoalMinutes,
-                    ),
+                    Consumer(builder: (context, ref, _) => _buildJourneyCard(context, ref)),
                   ],
-
-                  // The heatmap is NOT period-scoped: `heatmapProvider` is
-                  // fixed to the trailing 365 days on purpose, independent of
-                  // the picker. Gating it on `bundle.hasAnyData` meant picking
-                  // "Week" during a quiet week hid a whole year of history
-                  // that had nothing to do with the selection. It carries its
-                  // own empty state for the genuinely-empty case, so it can
-                  // simply always render.
                   const SizedBox(height: 14),
-                  _buildActivityHeatmapCard(
-                    context,
-                    heatmapAsync: heatmapAsync,
-                    thresholdsAsync: thresholdsAsync,
-                    milestoneDatesAsync: milestoneDatesAsync,
-                  ),
-
+                  Consumer(builder: (context, ref, _) => _buildActivityHeatmapCard(context, ref)),
                   const SizedBox(height: 14),
-                  _buildTileGrid(
-                    context,
-                    range: range,
-                    bundle: bundle,
-                    focusStatsAsync: focusStatsAsync,
-                    habitBundleAsync: habitBundleAsync,
-                    habitSnapshotsAsync: habitSnapshotsAsync,
-                  ),
-
+                  Consumer(builder: (context, ref, _) => _buildTileGrid(context, ref)),
                   const SizedBox(height: 14),
                   _buildSeeMoreRow(context),
                 ],
@@ -240,24 +186,21 @@ class StatsScreen extends ConsumerWidget {
 
   // ── Hero card ──────────────────────────────────────────────────────────────
 
-  Widget _buildHeroCard(
-    BuildContext context, {
-    required StatsRange range,
-    required StatsBundle bundle,
-    required AsyncValue<double?> trendAsync,
-    required AsyncValue<FocusStats> focusStatsAsync,
-  }) {
+  Widget _buildHeroCard(BuildContext context, WidgetRef ref) {
+    final range = ref.watch(statsRangeProvider);
+    final rate = ref.watch(
+      statsBundleProvider.select((b) => b.valueOrNull?.completionRate.rate),
+    );
+    final trend = ref.watch(statsTrendProvider).valueOrNull;
+    final focusStats = ref.watch(
+      focusStatsProvider.select((s) => s.valueOrNull ?? FocusStats.empty),
+    );
+
     final colors = context.colors;
     final tokens = context.tokens;
     final textTheme = Theme.of(context).textTheme;
 
-    final rate = bundle.completionRate.rate;
-    // §4's rule: a zero denominator is an em dash. Ten sessions all abandoned
-    // is a defined 0%, and must not be swallowed by the same branch.
     final rateStr = rate == null ? '—' : '${(rate * 100).round()}%';
-
-    final trend = trendAsync.valueOrNull;
-    final focusStats = focusStatsAsync.valueOrNull ?? FocusStats.empty;
 
     return Container(
       decoration: BoxDecoration(
@@ -345,19 +288,27 @@ class StatsScreen extends ConsumerWidget {
 
   // ── "Your journey" trail ───────────────────────────────────────────────────
 
-  Widget _buildJourneyCard(
-    BuildContext context, {
-    required StatsBundle bundle,
-    required TimeService time,
-    required int dailyGoalMinutes,
-  }) {
+  Widget _buildJourneyCard(BuildContext context, WidgetRef ref) {
+    final minutesByDate = ref.watch(
+      statsBundleProvider.select((b) => b.valueOrNull?.minutesByDate),
+    );
+    final periodStart = ref.watch(
+      statsBundleProvider.select((b) => b.valueOrNull?.period.start),
+    );
+    if (minutesByDate == null || periodStart == null) {
+      return const SizedBox.shrink();
+    }
+
+    final time = ref.watch(timeServiceProvider);
+    final dailyGoalMinutes = ref.watch(dailyGoalMinutesProvider);
+
     final colors = context.colors;
     final tokens = context.tokens;
     final textTheme = Theme.of(context).textTheme;
 
     final weeks = journeyWeeks(
-      minutesByDate: bundle.minutesByDate,
-      periodStart: bundle.period.start,
+      minutesByDate: minutesByDate,
+      periodStart: periodStart,
       todayLocalDate: time.todayLocalDate(),
       startOfWeek: time.startOfWeek,
       dailyGoalMinutes: dailyGoalMinutes,
@@ -445,16 +396,15 @@ class StatsScreen extends ConsumerWidget {
 
   // ── Activity heatmap ───────────────────────────────────────────────────────
 
-  Widget _buildActivityHeatmapCard(
-    BuildContext context, {
-    required AsyncValue<List<HeatmapCell>> heatmapAsync,
-    required AsyncValue<HeatmapThresholds> thresholdsAsync,
-    required AsyncValue<Set<String>> milestoneDatesAsync,
-  }) {
+  Widget _buildActivityHeatmapCard(BuildContext context, WidgetRef ref) {
+    final heatmapAsync = ref.watch(heatmapProvider);
+    final thresholdsAsync = ref.watch(heatmapThresholdsProvider);
+    final milestoneDates = ref.watch(
+      focusMilestoneDatesProvider.select((m) => m.valueOrNull ?? const <String>{}),
+    );
+
     final tokens = context.tokens;
     final textTheme = Theme.of(context).textTheme;
-
-    final milestoneDates = milestoneDatesAsync.valueOrNull ?? const <String>{};
 
     return Container(
       decoration: BoxDecoration(
@@ -677,20 +627,21 @@ class StatsScreen extends ConsumerWidget {
 
   // ── 2×2 tile grid ──────────────────────────────────────────────────────────
 
-  Widget _buildTileGrid(
-    BuildContext context, {
-    required StatsRange range,
-    required StatsBundle bundle,
-    required AsyncValue<FocusStats> focusStatsAsync,
-    required AsyncValue<HabitStatsBundle> habitBundleAsync,
-    required AsyncValue<List<HabitSnapshot>> habitSnapshotsAsync,
-  }) {
-    final focusStats = focusStatsAsync.valueOrNull ?? FocusStats.empty;
-    final habitBundle = habitBundleAsync.valueOrNull;
-    final snapshots = habitSnapshotsAsync.valueOrNull ?? const <HabitSnapshot>[];
-
-    final freezesUsed =
-        snapshots.fold<int>(0, (sum, s) => sum + s.excusedThisMonth);
+  Widget _buildTileGrid(BuildContext context, WidgetRef ref) {
+    final range = ref.watch(statsRangeProvider);
+    final period = ref.watch(statsPeriodProvider);
+    final longestStreakDays = ref.watch(
+      focusStatsProvider.select((s) => s.valueOrNull?.longestStreakDays ?? 0),
+    );
+    final weekdayProfile = ref.watch(
+      statsBundleProvider.select((b) => b.valueOrNull?.weekdayProfile),
+    );
+    final habitBundle = ref.watch(habitStatsBundleProvider).valueOrNull;
+    final freezesUsed = ref.watch(
+      habitSnapshotsProvider.select(
+        (s) => s.valueOrNull?.fold<int>(0, (sum, snap) => sum + snap.excusedThisMonth) ?? 0,
+      ),
+    );
 
     return Column(
       children: [
@@ -700,7 +651,7 @@ class StatsScreen extends ConsumerWidget {
             children: [
               Expanded(
                 child: _StatTile(
-                  figure: '${focusStats.longestStreakDays}',
+                  figure: '$longestStreakDays',
                   // "ever" in the visible label, not only the tooltip: this
                   // is the one tile in the grid that ignores the range
                   // picker, and a tooltip only reaches someone who thinks to
@@ -713,7 +664,9 @@ class StatsScreen extends ConsumerWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _StatTile(
-                  figure: strongestWeekdayLabel(bundle.weekdayProfile),
+                  figure: weekdayProfile == null
+                      ? '—'
+                      : strongestWeekdayLabel(weekdayProfile),
                   // A mean, not a total — "strongest day" on its own invites
                   // reading it as the day with the most focus time banked.
                   label: 'strongest day (avg)',
@@ -733,7 +686,7 @@ class StatsScreen extends ConsumerWidget {
                 child: _StatTile(
                   figure: habitsKeptPerDay(
                     range: range,
-                    period: bundle.period,
+                    period: period,
                     habitBundle: habitBundle,
                   ),
                   label: 'habits kept / day',

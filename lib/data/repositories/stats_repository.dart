@@ -108,9 +108,10 @@ class StatsRepository {
   Stream<List<DayFocusSummary>> watchLast7DaysSummary({
     int dailyGoalMinutes = FocusStats.defaultDailyGoalMinutes,
   }) {
-    return _completedSecondsByDateQuery().watch().map((rows) {
+    final today = _timeService.todayLocalDate();
+    final startDate = TimeService.addDays(today, -6);
+    return _completedSecondsByDateQuery(startDate: startDate, endDate: today).watch().map((rows) {
       final byDate = _foldRows(rows);
-      final today = _timeService.todayLocalDate();
       const dayNames = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
       return List.generate(7, (index) {
         final daysAgo = 6 - index;
@@ -146,12 +147,22 @@ class StatsRepository {
   /// SPEC.md §4.1: abandoned sessions contribute zero focus minutes, so they
   /// are excluded here rather than filtered later.
   JoinedSelectStatement<HasResultSet, dynamic>
-      _completedSecondsByDateQuery() {
+      _completedSecondsByDateQuery({
+    String? startDate,
+    String? endDate,
+  }) {
     final sum = _db.focusSessions.actualDurationS.sum();
-    return _db.selectOnly(_db.focusSessions)
+    final query = _db.selectOnly(_db.focusSessions)
       ..addColumns([_db.focusSessions.localDate, sum])
-      ..where(_db.focusSessions.outcome.equals(SessionOutcomes.completed))
-      ..groupBy([_db.focusSessions.localDate]);
+      ..where(_db.focusSessions.outcome.equals(SessionOutcomes.completed));
+    if (startDate != null && endDate != null) {
+      query.where(_db.focusSessions.localDate.isBetweenValues(startDate, endDate));
+    } else if (startDate != null) {
+      query.where(_db.focusSessions.localDate.isBiggerOrEqualValue(startDate));
+    } else if (endDate != null) {
+      query.where(_db.focusSessions.localDate.isSmallerOrEqualValue(endDate));
+    }
+    return query..groupBy([_db.focusSessions.localDate]);
   }
 
   Map<String, int> _foldRows(List<TypedResult> rows) {
@@ -275,6 +286,25 @@ class StatsRepository {
         .map((rows) => milestoneDates(_foldRows(rows), dailyGoalMinutes));
   }
 
+  Expression<bool> _throughputWhereClause($EventsTable e, Set<String>? localDates) {
+    final base = e.subjectType.equals('task') &
+        (e.type.equals('task_created') |
+            e.type.equals('task_completed') |
+            e.type.equals('task_deleted'));
+    if (localDates == null || localDates.isEmpty) return base;
+
+    final datesList = localDates.toList();
+    final directDateMatch = (e.type.equals('task_created') | e.type.equals('task_completed')) &
+        e.localDate.isIn(datesList);
+
+    final quotedDates = datesList.map((d) => "'${d.replaceAll("'", "''")}'").join(', ');
+    final deletedMatch = e.type.equals('task_deleted') &
+        (e.localDate.isIn(datesList) |
+            CustomExpression<bool>("json_extract(payload, '\$.created_local_date') IN ($quotedDates)"));
+
+    return base & (directDateMatch | deletedMatch);
+  }
+
   /// SPEC.md §4.10 — Throughput balance:
   /// Count of task_created vs task_completed events with local_date in P.
   /// Created = count(task_created) - count(task_deleted where the task was never completed).
@@ -283,11 +313,7 @@ class StatsRepository {
   /// CRITICAL: Operates entirely over the immutable events table with zero joins back to tasks.
   Future<ThroughputStats> getThroughput({Set<String>? localDates}) async {
     final query = _db.select(_db.events)
-      ..where((e) =>
-          e.subjectType.equals('task') &
-          (e.type.equals('task_created') |
-              e.type.equals('task_completed') |
-              e.type.equals('task_deleted')));
+      ..where((e) => _throughputWhereClause(e, localDates));
 
     final events = await query.get();
     return _calculateThroughputFromEvents(events, localDates);
@@ -296,11 +322,7 @@ class StatsRepository {
   /// Watches throughput balance over time.
   Stream<ThroughputStats> watchThroughput({Set<String>? localDates}) {
     final query = _db.select(_db.events)
-      ..where((e) =>
-          e.subjectType.equals('task') &
-          (e.type.equals('task_created') |
-              e.type.equals('task_completed') |
-              e.type.equals('task_deleted')));
+      ..where((e) => _throughputWhereClause(e, localDates));
 
     return query.watch().map((events) => _calculateThroughputFromEvents(events, localDates));
   }
