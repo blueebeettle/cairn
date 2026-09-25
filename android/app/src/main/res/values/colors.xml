@@ -9,11 +9,15 @@
 
   Every widget colour must therefore exist in BOTH files under the same
   name. ic_launcher_background deliberately does not — the launcher icon
-  keeps its brand purple in either theme, and names missing from the night
+  keeps its cream ground in either theme, and names missing from the night
   file simply fall back to this one.
+
+  Note that `dart run flutter_launcher_icons` rewrites the
+  ic_launcher_background value from adaptive_icon_background in pubspec.yaml,
+  and strips this file's trailing newline; restore it after a run.
 -->
 <resources>
-    <color name="ic_launcher_background">#590D86</color>
+    <color name="ic_launcher_background">#FAF3F0</color>
 
     <!-- Surfaces: the app's cream ground, lightest card on top. -->
     <color name="widget_background">#FAF3F0</color>
