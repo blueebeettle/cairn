@@ -69,11 +69,19 @@ class HabitStatsInput {
 /// counterpart of `CompletionRate` in `statistics.dart`.
 ///
 /// The same exclusions apply per scheduled day, not per habit: a neutral
-/// (excused rest) or pending (today, not yet due) day from ANY habit is left
+/// (a freeze) or pending (today, not yet due) day from ANY habit is left
 /// out of both sides, exactly as it would be if that one habit were asked
 /// alone. A habit with nothing scheduled in the period contributes nothing
 /// either way, rather than being excluded as a whole — so one demanding
 /// daily habit cannot drown out four easier ones in the pooled number.
+///
+/// Leaving `pending` out is right for every window this is asked about — a
+/// week or a quarter should not hold today's unfinished business against
+/// you, and a settled past day has no `pending` left in it. It is wrong for
+/// exactly one question: "how far through TODAY am I?", asked of the single
+/// day still open. There, excluding `pending` leaves only the habits already
+/// resolved, so the first tick reads as 100% however many are still to do.
+/// That question has its own function, [ofToday].
 class HabitCompletionRate {
   const HabitCompletionRate({required this.done, required this.eligible});
 
@@ -108,6 +116,89 @@ class HabitCompletionRate {
     }
     return HabitCompletionRate(done: done, eligible: eligible);
   }
+
+  /// Same pooling as [of], but for the single day still in progress: a
+  /// still-open ([HabitDayOutcome.pending]) habit counts toward the
+  /// denominator as "not yet done" instead of being excluded, so progress
+  /// through today is visible before the day resolves. Every other outcome
+  /// (done/neutral/future) is treated exactly as [of] treats it.
+  ///
+  /// With four habits scheduled and one ticked off this is 1/4, where [of]
+  /// says 1/1 — the other three are `pending`, and [of] cannot see them.
+  ///
+  /// Still null-not-zero: a day with nothing scheduled, or with everything on
+  /// it excused, has no denominator and returns a null [rate]. A day with
+  /// habits scheduled and none done is a real 0.0.
+  ///
+  /// Never call this for a day other than today — for any settled day [of] is
+  /// already correct and already tested as such. [ofDay] makes that choice for
+  /// callers that draw a whole week.
+  static HabitCompletionRate ofToday(
+    Iterable<HabitStatsInput> habits,
+    String todayLocalDate,
+  ) {
+    var done = 0;
+    var eligible = 0;
+    for (final habit in habits) {
+      // One date, so a direct lookup: [of]'s walk over a habit's whole history
+      // finds the same single entry (or none, when it is not scheduled today)
+      // by way of `StatsPeriod.day(...).contains`.
+      final outcome = habit.outcomes[todayLocalDate];
+      if (outcome == null) continue;
+      if (outcome == HabitDayOutcome.neutral ||
+          outcome == HabitDayOutcome.future) {
+        continue;
+      }
+      // `pending` falls through to here on purpose — the one difference from
+      // [of].
+      eligible++;
+      if (outcome == HabitDayOutcome.done) done++;
+    }
+    return HabitCompletionRate(done: done, eligible: eligible);
+  }
+
+  /// One day's pooled completion for a Mon–Sun chart: [ofToday] when [date] is
+  /// [todayLocalDate], [of] over that single day for every other.
+  ///
+  /// The two charts that draw a week of these — the Habits screen's recap bars
+  /// (`buildWeeklyRecap`) and the Today screen's momentum strip — both go
+  /// through here, so they cannot disagree about a day. They show the same
+  /// week, and a bar at 25% over a pip at 100% for the same Tuesday would be
+  /// the kind of thing a user notices and stops trusting the app over.
+  static HabitCompletionRate ofDay(
+    Iterable<HabitStatsInput> habits,
+    String date, {
+    required String todayLocalDate,
+  }) {
+    return date == todayLocalDate
+        ? ofToday(habits, todayLocalDate)
+        : of(habits, StatsPeriod.day(date));
+  }
+}
+
+/// Which of the activity heatmap's five ramp steps a day completed at [rate]
+/// sits on — an index into `AppTokens.heatmap`.
+///
+/// The same "darker means more" language the Stats heatmap already speaks, so
+/// a week strip and a heatmap cell read the same way. The ramp has four steps
+/// above empty, so a fraction is cut into thirds with a full day as its own
+/// top step: fully complete is the darkest tier, and nothing short of it is.
+///
+///   * `rate >= 1`      → 4, the darkest — every scheduled habit done
+///   * `rate > 2/3`     → 3
+///   * `rate > 1/3`     → 2
+///   * `rate > 0`       → 1, the lightest tint — something done
+///   * otherwise        → 0, the empty step
+///
+/// Takes a real rate. A day with no rate at all (nothing scheduled) has no
+/// tier and must not be asked about here: null is not zero, and the caller
+/// draws it differently from step 0.
+int completionTier(double rate) {
+  if (rate >= 1) return 4;
+  if (rate > 2 / 3) return 3;
+  if (rate > 1 / 3) return 2;
+  if (rate > 0) return 1;
+  return 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -196,7 +287,7 @@ int habitCheckOffsTotal(Iterable<HabitStatsInput> habits, StatsPeriod period) {
 // Freezes used
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Rest days excused across every habit inside [period] — the count of
+/// Freezes applied across every habit inside [period] — the count of
 /// `HabitDayOutcome.neutral` days, pooled.
 ///
 /// The period-scoped counterpart of `HabitSnapshot.excusedThisMonth`, which is
@@ -326,6 +417,12 @@ HabitStatsBundle buildHabitStatsBundle({
 /// scored. Null is deliberately not zero: a day where every habit was excused,
 /// and a day where nothing was scheduled, are both "no claim to make" rather
 /// than "you did nothing".
+///
+/// For a settled day that is [HabitCompletionRate.of] over the day. For today
+/// it is [HabitCompletionRate.ofToday], which counts a habit still to do as
+/// "not yet" rather than leaving it out — otherwise today's bar would leap
+/// from its empty stub to full on the first check-off, with every other habit
+/// still pending and invisible to the arithmetic.
 class WeeklyRecapDay {
   const WeeklyRecapDay({
     required this.date,
@@ -411,6 +508,15 @@ class WeeklyRecap {
 /// per-day rates, the two weekly rates and the three tiles are all one
 /// consistent read — and the whole thing costs exactly the queries that built
 /// [habits], no matter how many periods it asks about.
+///
+/// The day bars and the week's headline rate deliberately answer different
+/// questions about today. A bar asks "how far through the day am I", so
+/// today's counts habits still to do ([HabitCompletionRate.ofToday]). The
+/// weekly rate asks "how has the week gone", and keeps
+/// [HabitCompletionRate.of]'s exclusion of today's open habits: an afternoon
+/// at 1 of 4 should not drag the week's headline down for a day that is not
+/// over. So today's bar can read 25% while the line above it reads a rate
+/// made only of settled days — that is the two questions, not a disagreement.
 WeeklyRecap buildWeeklyRecap({
   required List<HabitStatsInput> habits,
   required String todayLocalDate,
@@ -441,7 +547,11 @@ WeeklyRecap buildWeeklyRecap({
           final date = TimeService.addDays(weekStartLocalDate, i);
           return WeeklyRecapDay(
             date: date,
-            rate: HabitCompletionRate.of(habits, StatsPeriod.day(date)).rate,
+            rate: HabitCompletionRate.ofDay(
+              habits,
+              date,
+              todayLocalDate: todayLocalDate,
+            ).rate,
             isToday: date == todayLocalDate,
             isFuture: date.compareTo(todayLocalDate) > 0,
           );

@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:habit_tracker/core/time/time_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:habit_tracker/core/habits/habit_streak.dart';
+import 'package:habit_tracker/core/stats/habit_statistics.dart';
 import 'package:habit_tracker/core/widgets/cairn_glyph.dart';
 import 'package:habit_tracker/data/database/app_database.dart';
 import 'package:habit_tracker/data/providers/habit_providers.dart';
+import 'package:habit_tracker/data/repositories/habit_analytics_repository.dart';
 import 'package:habit_tracker/data/repositories/habits_repository.dart';
 import 'package:habit_tracker/features/habits/presentation/widgets/habit_check_burst.dart';
 import 'package:habit_tracker/features/today/presentation/widgets/grow_your_cairn_card.dart';
@@ -208,7 +210,10 @@ void main() {
       expect(days.firstWhere((d) => d.isToday).isFuture, isFalse);
     });
 
-    test('a day counts as completed when any habit was done on it', () {
+    Map<String, double?> ratesOf(List<MomentumDay> days) =>
+        {for (final d in days) d.localDate: d.rate};
+
+    test("a settled day's rate is the share of its scheduled habits done", () {
       final days = build(snapshots: [
         _snapshot('a', const {
           _monday: HabitDayOutcome.done,
@@ -217,25 +222,158 @@ void main() {
         _snapshot('b', const {
           _monday: HabitDayOutcome.missed,
           '2026-09-22': HabitDayOutcome.missed,
-          _today: HabitDayOutcome.done,
+        }),
+      ]);
+      final rates = ratesOf(days);
+
+      // Monday: one of two done. It used to read as a flat "completed".
+      expect(rates[_monday], 0.5);
+      // Tuesday: scheduled and nothing done — a real zero, not "no data".
+      expect(rates['2026-09-22'], 0.0);
+    });
+
+    test('a fully done day is exactly 1.0 and a partly done one is not', () {
+      final days = build(snapshots: [
+        _snapshot('a', const {
+          _monday: HabitDayOutcome.done,
+          '2026-09-22': HabitDayOutcome.done,
+        }),
+        _snapshot('b', const {
+          _monday: HabitDayOutcome.done,
+          '2026-09-22': HabitDayOutcome.missed,
         }),
       ]);
 
-      expect(
-        days.where((d) => d.completed).map((d) => d.localDate),
-        [_monday, _today],
-      );
+      expect(days.first.isFullyCompleted, isTrue);
+      expect(days[1].isFullyCompleted, isFalse);
+      // Only 1.0 counts, so a null (nothing scheduled) day never does either.
+      expect(days.where((d) => d.isFullyCompleted).map((d) => d.localDate),
+          [_monday]);
     });
 
-    test('an excused rest day is not a completion', () {
+    test('today counts habits still to do: 1 of 4 done is 0.25, not 1.0', () {
+      // The reported bug, through the strip's own model. Four habits are due
+      // today; one is ticked off and three are still pending. Counting only
+      // the resolved habit read this as 1/1 — an instant full pip on the first
+      // check-off.
+      final days = build(snapshots: [
+        _snapshot('a', const {_today: HabitDayOutcome.done}),
+        _snapshot('b', const {_today: HabitDayOutcome.pending}),
+        _snapshot('c', const {_today: HabitDayOutcome.pending}),
+        _snapshot('d', const {_today: HabitDayOutcome.pending}),
+      ]);
+
+      final today = days.singleWhere((d) => d.isToday);
+      expect(today.rate, 0.25);
+      expect(today.isFullyCompleted, isFalse);
+    });
+
+    test('today grows a habit at a time and only reaches 1.0 when all are done',
+        () {
+      double? todayRate(int done) => build(snapshots: [
+            for (var i = 0; i < 4; i++)
+              _snapshot('h$i', {
+                _today: i < done
+                    ? HabitDayOutcome.done
+                    : HabitDayOutcome.pending,
+              }),
+          ]).singleWhere((d) => d.isToday).rate;
+
+      expect([for (var n = 0; n <= 4; n++) todayRate(n)],
+          [0.0, 0.25, 0.5, 0.75, 1.0]);
+    });
+
+    test('today with habits due and none done is a real 0.0, not null', () {
+      final days = build(snapshots: [
+        _snapshot('a', const {_today: HabitDayOutcome.pending}),
+      ]);
+      expect(days.singleWhere((d) => d.isToday).rate, 0.0);
+    });
+
+    test('a frozen habit is left out of both sides', () {
+      final days = build(snapshots: [
+        _snapshot('a', const {_monday: HabitDayOutcome.done}),
+        _snapshot('b', const {_monday: HabitDayOutcome.neutral}),
+      ]);
+      // One done, one frozen: 1 of 1 scoreable.
+      expect(days.first.rate, 1.0);
+    });
+
+    test('a day where everything was frozen has no rate, not 0', () {
       final days = build(snapshots: [
         _snapshot('a', const {_monday: HabitDayOutcome.neutral}),
       ]);
-      expect(days.where((d) => d.completed), isEmpty);
+      expect(days.first.rate, isNull);
+      expect(days.first.isFullyCompleted, isFalse);
     });
 
-    test('no habits means no completed days', () {
-      expect(build().where((d) => d.completed), isEmpty);
+    test('no habits means no rate on any day — nothing scheduled, not zero', () {
+      final days = build();
+      expect(days.map((d) => d.rate), everyElement(isNull));
+      expect(days.where((d) => d.isFullyCompleted), isEmpty);
+    });
+
+    test('future days have no rate', () {
+      final days = build(snapshots: [
+        _snapshot('a', const {_today: HabitDayOutcome.done}),
+      ]);
+      expect(
+        days.where((d) => d.isFuture).map((d) => d.rate),
+        everyElement(isNull),
+      );
+    });
+
+    test('a past week is all settled — no day is treated as in progress', () {
+      // Asked about last week, "today" is not in it, so every day goes through
+      // the settled-day path.
+      final days = MomentumWeekStrip.daysFor(
+        weekOf: '2026-09-14',
+        todayLocalDate: _today,
+        snapshots: [
+          _snapshot('a', const {'2026-09-14': HabitDayOutcome.done}),
+          _snapshot('b', const {'2026-09-14': HabitDayOutcome.missed}),
+        ],
+        weekStart: DateTime.monday,
+      );
+      expect(days.first.rate, 0.5);
+      expect(days.where((d) => d.isToday), isEmpty);
+    });
+
+    test('agrees with the Habits weekly recap for the same week, day by day',
+        () {
+      // The strip and the recap bars show the same week and must not disagree
+      // about it — including today, where both must count what is still to do.
+      final snapshots = [
+        _snapshot('a', const {
+          _monday: HabitDayOutcome.done,
+          '2026-09-22': HabitDayOutcome.missed,
+          _today: HabitDayOutcome.done,
+        }),
+        _snapshot('b', const {
+          _monday: HabitDayOutcome.done,
+          '2026-09-22': HabitDayOutcome.done,
+          _today: HabitDayOutcome.pending,
+        }),
+        _snapshot('c', const {
+          _monday: HabitDayOutcome.missed,
+          '2026-09-22': HabitDayOutcome.done,
+          _today: HabitDayOutcome.pending,
+        }),
+      ];
+
+      final strip = build(snapshots: snapshots);
+      final recap = buildWeeklyRecap(
+        habits: [for (final s in snapshots) s.toStatsInput()],
+        todayLocalDate: _today,
+        weekStartLocalDate: _monday,
+      );
+
+      expect(
+        [for (final d in strip) d.rate],
+        [for (final d in recap.days) d.rate],
+      );
+      // And today is the genuine fraction on both: 1 of 3.
+      expect(strip.singleWhere((d) => d.isToday).rate, closeTo(1 / 3, 1e-9));
     });
   });
 
@@ -327,6 +465,285 @@ void main() {
             .where((d) => d.boxShadow != null);
 
         expect(haloed, isEmpty);
+      });
+    });
+
+    group('MomentumWeekStrip pips ($themeName)', () {
+      // This week is Mon 21 .. Sun 27 and today is Wed 23, so pips[0] is
+      // Monday, pips[2] is today and pips[3..6] are still to come.
+      const monday = 0;
+      const tuesday = 1;
+      const todayPip = 2;
+      const thursday = 3;
+
+      Widget stripHost(
+        ThemeData theme,
+        List<HabitSnapshot> snapshots, {
+        ValueChanged<String>? onDayTap,
+      }) =>
+          ProviderScope(
+            // A fresh scope per call: several of these tests re-pump with
+            // different snapshots, and an unkeyed scope would keep serving the
+            // first pump's already-resolved provider.
+            key: UniqueKey(),
+            overrides: [
+              habitSnapshotsProvider.overrideWith((ref) async => snapshots),
+            ],
+            child: MaterialApp(
+              theme: theme,
+              home: Scaffold(
+                body: MomentumWeekStrip(
+                  weekOf: _today,
+                  todayLocalDate: _today,
+                  weekStart: DateTime.monday,
+                  onDayTap: onDayTap,
+                ),
+              ),
+            ),
+          );
+
+      /// The seven pips, Mon..Sun. They are the only Containers in the strip
+      /// with a rounded decoration.
+      List<BoxDecoration> pips(WidgetTester tester) => tester
+          .widgetList<Container>(find.descendant(
+            of: find.byType(MomentumWeekStrip),
+            matching: find.byType(Container),
+          ))
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .where((d) => d.borderRadius != null)
+          .toList();
+
+      /// Today's unfilled cover: the only FractionallySizedBox in the strip.
+      Finder cover() => find.descendant(
+            of: find.byType(MomentumWeekStrip),
+            matching: find.byType(FractionallySizedBox),
+          );
+
+      /// [n] of four habits done today, the rest pending.
+      List<HabitSnapshot> fourHabitsToday(int n) => [
+            for (var i = 0; i < 4; i++)
+              _snapshot('h$i', {
+                _today:
+                    i < n ? HabitDayOutcome.done : HabitDayOutcome.pending,
+              }),
+          ];
+
+      testWidgets('past days grade by rate on the heatmap ramp', (tester) async {
+        final theme = buildTheme();
+        final tokens = theme.extension<AppTokens>()!;
+
+        // 1, 2, 3 and 4 of four habits done on Monday: the four steps above
+        // empty, lightest to darkest.
+        for (final (done, tier) in [(1, 1), (2, 2), (3, 3), (4, 4)]) {
+          await tester.pumpWidget(stripHost(theme, [
+            for (var i = 0; i < 4; i++)
+              _snapshot('h$i', {
+                _monday:
+                    i < done ? HabitDayOutcome.done : HabitDayOutcome.missed,
+              }),
+          ]));
+          await tester.pumpAndSettle();
+
+          expect(pips(tester)[monday].color, tokens.heatmap[tier],
+              reason: '$done of 4 done should sit on tier $tier');
+        }
+      });
+
+      testWidgets('a fully completed day is the darkest tier, a low one lighter',
+          (tester) async {
+        final theme = buildTheme();
+        final tokens = theme.extension<AppTokens>()!;
+
+        await tester.pumpWidget(stripHost(theme, [
+          _snapshot('a', const {
+            _monday: HabitDayOutcome.done,
+            '2026-09-22': HabitDayOutcome.done,
+          }),
+          _snapshot('b', const {
+            _monday: HabitDayOutcome.done,
+            '2026-09-22': HabitDayOutcome.missed,
+          }),
+        ]));
+        await tester.pumpAndSettle();
+
+        final p = pips(tester);
+        expect(p[monday].color, tokens.heatmap.last);
+        expect(p[tuesday].color, isNot(tokens.heatmap.last));
+        expect(p[tuesday].color, tokens.heatmap[2]);
+      });
+
+      testWidgets(
+          'nothing scheduled, nothing done and a future day are three different looks',
+          (tester) async {
+        final theme = buildTheme();
+        final tokens = theme.extension<AppTokens>()!;
+
+        // Nothing scheduled on Monday; two habits scheduled Tuesday and both
+        // missed; Thursday has not happened.
+        await tester.pumpWidget(stripHost(theme, [
+          _snapshot('a', const {'2026-09-22': HabitDayOutcome.missed}),
+          _snapshot('b', const {'2026-09-22': HabitDayOutcome.missed}),
+        ]));
+        await tester.pumpAndSettle();
+
+        final p = pips(tester);
+        final nothingScheduled = p[monday];
+        final nothingDone = p[tuesday];
+        final future = p[thursday];
+
+        // 0.0 is the empty shade at full strength; null is the same shade
+        // dimmed. Collapsing them was the old behaviour.
+        expect(nothingDone.color, tokens.lineSoft);
+        expect(nothingScheduled.color, isNot(nothingDone.color));
+        expect(nothingScheduled.color, tokens.lineSoft.withValues(alpha: 0.4));
+
+        // A future day is outlined; a settled one is not.
+        expect(future.border, isNotNull);
+        expect(nothingDone.border, isNull);
+        expect(nothingScheduled.border, isNull);
+      });
+
+      testWidgets('today stays primary with its halo whatever its rate',
+          (tester) async {
+        final theme = buildTheme();
+        final scheme = theme.colorScheme;
+
+        // null (nothing scheduled), 0.0, a fraction, and complete.
+        for (final (label, snapshots) in [
+          ('no habits', const <HabitSnapshot>[]),
+          ('0 of 4', fourHabitsToday(0)),
+          ('1 of 4', fourHabitsToday(1)),
+          ('3 of 4', fourHabitsToday(3)),
+          ('4 of 4', fourHabitsToday(4)),
+        ]) {
+          await tester.pumpWidget(stripHost(theme, snapshots));
+          await tester.pumpAndSettle();
+
+          final p = pips(tester);
+          expect(p[todayPip].color, scheme.primary,
+              reason: 'today with $label must not fade');
+          expect(p[todayPip].boxShadow, isNotNull,
+              reason: 'today with $label keeps its halo');
+          expect(p.where((d) => d.boxShadow != null), hasLength(1),
+              reason: 'and it is still the only day that has one');
+        }
+      });
+
+      testWidgets("today's fill shows genuine partial progress, not a jump to full",
+          (tester) async {
+        final theme = buildTheme();
+
+        Future<double?> unfilledAt(int done) async {
+          await tester.pumpWidget(stripHost(theme, fourHabitsToday(done)));
+          await tester.pumpAndSettle();
+          if (cover().evaluate().isEmpty) return null;
+          return tester.widget<FractionallySizedBox>(cover()).heightFactor;
+        }
+
+        // The share of the pip still to fill, as habits are checked off. The
+        // first tick must leave most of it unfilled — the bug made it 0.
+        expect(await unfilledAt(0), 1.0);
+        expect(await unfilledAt(1), closeTo(0.75, 1e-9));
+        expect(await unfilledAt(2), closeTo(0.5, 1e-9));
+        expect(await unfilledAt(3), closeTo(0.25, 1e-9));
+        // Everything done: no cover at all, the solid pip it always was.
+        expect(await unfilledAt(4), isNull);
+      });
+
+      testWidgets("today's null and zero are told apart by the cover's tint",
+          (tester) async {
+        final theme = buildTheme();
+
+        Future<Color> coverColorFor(List<HabitSnapshot> snapshots) async {
+          await tester.pumpWidget(stripHost(theme, snapshots));
+          await tester.pumpAndSettle();
+          final box = tester.widget<DecoratedBox>(find.descendant(
+            of: cover(),
+            matching: find.byType(DecoratedBox),
+          ));
+          return (box.decoration as BoxDecoration).color!;
+        }
+
+        final nothingScheduled = await coverColorFor(const []);
+        final nothingDoneYet = await coverColorFor(fourHabitsToday(0));
+        expect(nothingScheduled, isNot(nothingDoneYet));
+      });
+
+      testWidgets('the header counts fully kept days, not any-habit-done days',
+          (tester) async {
+        // Monday fully done, Tuesday half done, today half done: one kept day.
+        // Counting any-habit-done would say 3 over a row of half-filled pips.
+        await tester.pumpWidget(stripHost(buildTheme(), [
+          _snapshot('a', const {
+            _monday: HabitDayOutcome.done,
+            '2026-09-22': HabitDayOutcome.done,
+            _today: HabitDayOutcome.done,
+          }),
+          _snapshot('b', const {
+            _monday: HabitDayOutcome.done,
+            '2026-09-22': HabitDayOutcome.missed,
+            _today: HabitDayOutcome.pending,
+          }),
+        ]));
+        await tester.pumpAndSettle();
+
+        expect(find.text('1 / 7 days'), findsOneWidget);
+      });
+
+      testWidgets('each pip says what it shows, in percent or in words',
+          (tester) async {
+        final handle = tester.ensureSemantics();
+        await tester.pumpWidget(stripHost(
+          buildTheme(),
+          [
+            _snapshot('a', const {
+              '2026-09-22': HabitDayOutcome.done,
+              '2026-09-23': HabitDayOutcome.done,
+            }),
+            _snapshot('b', const {
+              '2026-09-22': HabitDayOutcome.missed,
+              '2026-09-23': HabitDayOutcome.pending,
+            }),
+            // Monday is fully completed by this one alone.
+            _snapshot('c', const {_monday: HabitDayOutcome.done}),
+          ],
+          onDayTap: (_) {},
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.bySemanticsLabel('$_monday, fully completed'),
+            findsOneWidget);
+        expect(
+          find.bySemanticsLabel('2026-09-22, partially completed, 50 percent'),
+          findsOneWidget,
+        );
+        expect(
+          find.bySemanticsLabel(
+              '2026-09-23, partially completed, 50 percent, today'),
+          findsOneWidget,
+        );
+        expect(find.bySemanticsLabel('2026-09-24, upcoming'), findsOneWidget);
+        handle.dispose();
+      });
+
+      testWidgets('nothing scheduled and nothing done are spoken differently',
+          (tester) async {
+        final handle = tester.ensureSemantics();
+        await tester.pumpWidget(stripHost(
+          buildTheme(),
+          [
+            _snapshot('a', const {'2026-09-22': HabitDayOutcome.missed}),
+          ],
+          onDayTap: (_) {},
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.bySemanticsLabel('$_monday, nothing scheduled'),
+            findsOneWidget);
+        expect(find.bySemanticsLabel('2026-09-22, nothing done'),
+            findsOneWidget);
+        handle.dispose();
       });
     });
   }

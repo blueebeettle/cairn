@@ -7,6 +7,7 @@ import 'package:habit_tracker/data/repositories/events_repository.dart';
 import 'package:habit_tracker/data/repositories/habit_analytics_repository.dart';
 import 'package:habit_tracker/data/repositories/habits_repository.dart';
 import 'package:habit_tracker/data/repositories/settings_repository.dart';
+import 'package:habit_tracker/features/today/presentation/widgets/momentum_week_strip.dart';
 
 /// Wiring test for `HabitAnalyticsRepository` (SPEC.md §10.5) — the real
 /// database and the real `HabitsRepository` underneath it, so a mistake in
@@ -119,6 +120,90 @@ void main() {
       // Only Read's 4/5 remains.
       expect(bundle.completionRate.eligible, 5);
       expect(bundle.completionRate.done, 4);
+    });
+  });
+
+  // The reported bug, end to end: real habits, real check-off, real database.
+  // Both charts that draw today's fill — the Habits screen's recap bars and the
+  // Today screen's momentum strip — must show a genuine fraction, and the same
+  // one, rather than leaping to full the moment one habit is ticked.
+  group("today's fill — 4 habits scheduled, 1 checked off", () {
+    // Sun 2026-09-06: week starts Mon 08-31, so today is the last column.
+    const today = '2026-09-06';
+
+    Future<void> fourDailyHabitsOneDone() async {
+      nowMs = _at('2026-08-31');
+      final ids = <String>[];
+      for (final title in ['Read', 'Walk', 'Stretch', 'Journal']) {
+        ids.add(await habits.createHabit(
+            title: title, scheduleRule: 'FREQ=DAILY'));
+      }
+      nowMs = _at(today);
+      await habits.check(ids.first, localDate: today);
+    }
+
+    test('the weekly recap draws today at 0.25', () async {
+      await fourDailyHabitsOneDone();
+
+      final recap = await analytics.loadWeeklyRecap();
+      final todayBar = recap.days.singleWhere((d) => d.isToday);
+
+      expect(todayBar.date, today);
+      expect(todayBar.rate, 0.25);
+    });
+
+    test('the momentum strip draws today at 0.25', () async {
+      await fourDailyHabitsOneDone();
+
+      final days = MomentumWeekStrip.daysFor(
+        weekOf: today,
+        todayLocalDate: today,
+        snapshots: await habits.loadActiveSnapshots(),
+        weekStart: DateTime.monday,
+      );
+      final todayPip = days.singleWhere((d) => d.isToday);
+
+      expect(todayPip.localDate, today);
+      expect(todayPip.rate, 0.25);
+    });
+
+    test('the two charts agree on every day of the week', () async {
+      await fourDailyHabitsOneDone();
+
+      final recap = await analytics.loadWeeklyRecap();
+      final days = MomentumWeekStrip.daysFor(
+        weekOf: today,
+        todayLocalDate: today,
+        snapshots: await habits.loadActiveSnapshots(),
+        weekStart: DateTime.monday,
+      );
+
+      expect(
+        [for (final d in days) d.rate],
+        [for (final d in recap.days) d.rate],
+      );
+    });
+
+    test('settled days are unchanged: an untouched past day is a real 0.0',
+        () async {
+      await fourDailyHabitsOneDone();
+
+      final recap = await analytics.loadWeeklyRecap();
+      // Mon 08-31 .. Sat 09-05: four habits scheduled, none ever checked.
+      final monday = recap.days.first;
+      expect(monday.date, '2026-08-31');
+      expect(monday.rate, 0.0);
+    });
+
+    test('checking off every habit takes today to exactly 1.0', () async {
+      await fourDailyHabitsOneDone();
+      final all = await habits.loadActiveSnapshots();
+      for (final s in all.skip(1)) {
+        await habits.check(s.habit.id, localDate: today);
+      }
+
+      final recap = await analytics.loadWeeklyRecap();
+      expect(recap.days.singleWhere((d) => d.isToday).rate, 1.0);
     });
   });
 

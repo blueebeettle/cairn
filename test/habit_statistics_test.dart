@@ -87,6 +87,255 @@ void main() {
     });
   });
 
+  // ── Progress through the day still open ────────────────────────────────────
+  //
+  // `HabitCompletionRate.of` leaves `pending` out of both sides, which is right
+  // for every multi-day window and for any settled day. For TODAY it makes the
+  // first check-off read as 100%: the one habit that resolved to `done` is the
+  // only thing counted, and the rest are invisible until they resolve too.
+  group('HabitCompletionRate.ofToday — progress through today', () {
+    const today = '2026-09-03';
+
+    HabitStatsInput habitOn(String id, Map<String, HabitDayOutcome> outcomes) =>
+        HabitStatsInput(
+          habitId: id,
+          title: id,
+          colorIndex: 0,
+          iconName: 'check',
+          currentStreak: 0,
+          longestStreak: 0,
+          outcomes: outcomes,
+          entries: const {},
+        );
+
+    /// [total] habits scheduled today, the first [done] of them done and the
+    /// rest still pending — how a real morning looks.
+    List<HabitStatsInput> morning({required int total, required int done}) => [
+          for (var i = 0; i < total; i++)
+            habitOn('h$i', {
+              today: i < done ? HabitDayOutcome.done : HabitDayOutcome.pending,
+            }),
+        ];
+
+    test('4 habits scheduled and 1 done is 0.25, not 1.0', () {
+      // The reported bug, exactly.
+      final rate = HabitCompletionRate.ofToday(
+        morning(total: 4, done: 1),
+        today,
+      );
+
+      expect(rate.done, 1);
+      expect(rate.eligible, 4);
+      expect(rate.rate, 0.25);
+    });
+
+    test('`of` still reads the same morning as 1.0 — which is why this exists',
+        () {
+      // Pins that `of` is untouched. Its exclusion of `pending` is correct for
+      // a week or a quarter; it just cannot answer "how far through today".
+      final settled = HabitCompletionRate.of(
+        morning(total: 4, done: 1),
+        StatsPeriod.day(today),
+      );
+      expect(settled.eligible, 1);
+      expect(settled.rate, 1.0);
+    });
+
+    test('grows a habit at a time and is only 1.0 when every one is done', () {
+      expect(
+        [
+          for (var n = 0; n <= 4; n++)
+            HabitCompletionRate.ofToday(morning(total: 4, done: n), today).rate,
+        ],
+        [0.0, 0.25, 0.5, 0.75, 1.0],
+      );
+    });
+
+    test('habits scheduled and none done is a real 0.0, not null', () {
+      final rate = HabitCompletionRate.ofToday(
+        morning(total: 3, done: 0),
+        today,
+      );
+      expect(rate.eligible, 3);
+      expect(rate.rate, 0.0);
+    });
+
+    test('nothing scheduled today is null, never 0', () {
+      expect(HabitCompletionRate.ofToday(const [], today).rate, isNull);
+
+      // Habits exist but none is scheduled today: no entry for the date.
+      final elsewhere = [
+        habitOn('a', const {'2026-09-02': HabitDayOutcome.done}),
+      ];
+      final rate = HabitCompletionRate.ofToday(elsewhere, today);
+      expect(rate.eligible, 0);
+      expect(rate.rate, isNull);
+    });
+
+    test('a frozen habit is excluded exactly as `of` excludes it', () {
+      final habits = [
+        habitOn('done', const {today: HabitDayOutcome.done}),
+        habitOn('frozen', const {today: HabitDayOutcome.neutral}),
+        habitOn('todo1', const {today: HabitDayOutcome.pending}),
+        habitOn('todo2', const {today: HabitDayOutcome.pending}),
+      ];
+      final rate = HabitCompletionRate.ofToday(habits, today);
+      expect(rate.eligible, 3);
+      expect(rate.done, 1);
+      expect(rate.rate, closeTo(1 / 3, 1e-9));
+    });
+
+    test('a day where everything is frozen is null, not 0', () {
+      final rate = HabitCompletionRate.ofToday([
+        habitOn('a', const {today: HabitDayOutcome.neutral}),
+        habitOn('b', const {today: HabitDayOutcome.neutral}),
+      ], today);
+      expect(rate.eligible, 0);
+      expect(rate.rate, isNull);
+    });
+
+    test('future is excluded exactly as `of` excludes it', () {
+      final rate = HabitCompletionRate.ofToday([
+        habitOn('a', const {today: HabitDayOutcome.future}),
+      ], today);
+      expect(rate.rate, isNull);
+    });
+
+    test('a habit not scheduled today neither counts nor dilutes', () {
+      final habits = [
+        ...morning(total: 2, done: 1),
+        habitOn('other-days', const {'2026-09-02': HabitDayOutcome.missed}),
+      ];
+      expect(HabitCompletionRate.ofToday(habits, today).rate, 0.5);
+    });
+
+    test('reads only today: yesterday and tomorrow do not leak in', () {
+      final habits = [
+        habitOn('a', const {
+          '2026-09-02': HabitDayOutcome.done,
+          today: HabitDayOutcome.pending,
+          '2026-09-04': HabitDayOutcome.future,
+        }),
+      ];
+      final rate = HabitCompletionRate.ofToday(habits, today);
+      expect(rate.eligible, 1);
+      expect(rate.done, 0);
+      expect(rate.rate, 0.0);
+    });
+
+    test('a target habit part-way there (5 of 8 glasses) is still to do', () {
+      // Outcome resolution files a partial count today under `pending`, so it
+      // is "not yet done" like any other open habit.
+      final rate = HabitCompletionRate.ofToday([
+        habitOn('water', const {today: HabitDayOutcome.pending}),
+        habitOn('read', const {today: HabitDayOutcome.done}),
+      ], today);
+      expect(rate.rate, 0.5);
+    });
+  });
+
+  group('HabitCompletionRate.ofDay — one rule for a week of bars', () {
+    const today = '2026-09-03';
+
+    HabitStatsInput habit(String id, Map<String, HabitDayOutcome> outcomes) =>
+        HabitStatsInput(
+          habitId: id,
+          title: id,
+          colorIndex: 0,
+          iconName: 'check',
+          currentStreak: 0,
+          longestStreak: 0,
+          outcomes: outcomes,
+          entries: const {},
+        );
+
+    final fourHabits = [
+      habit('a', const {
+        '2026-09-02': HabitDayOutcome.done,
+        today: HabitDayOutcome.done,
+      }),
+      habit('b', const {
+        '2026-09-02': HabitDayOutcome.done,
+        today: HabitDayOutcome.pending,
+      }),
+      habit('c', const {
+        '2026-09-02': HabitDayOutcome.done,
+        today: HabitDayOutcome.pending,
+      }),
+      habit('d', const {
+        '2026-09-02': HabitDayOutcome.missed,
+        today: HabitDayOutcome.pending,
+      }),
+    ];
+
+    test('today counts what is still to do', () {
+      expect(
+        HabitCompletionRate.ofDay(fourHabits, today, todayLocalDate: today).rate,
+        0.25,
+      );
+    });
+
+    test('a settled day is exactly what `of` says, unchanged', () {
+      final viaDay = HabitCompletionRate.ofDay(
+        fourHabits,
+        '2026-09-02',
+        todayLocalDate: today,
+      );
+      final viaOf =
+          HabitCompletionRate.of(fourHabits, StatsPeriod.day('2026-09-02'));
+      expect(viaDay.rate, 0.75);
+      expect(viaDay.done, viaOf.done);
+      expect(viaDay.eligible, viaOf.eligible);
+    });
+
+    test('a day after today has nothing to score', () {
+      expect(
+        HabitCompletionRate.ofDay(
+          fourHabits,
+          '2026-09-04',
+          todayLocalDate: today,
+        ).rate,
+        isNull,
+      );
+    });
+  });
+
+  group('completionTier — the heatmap ramp for a completion fraction', () {
+    test('a full day is the darkest step, an empty one the lightest', () {
+      expect(completionTier(1.0), 4);
+      expect(completionTier(0.0), 0);
+    });
+
+    test('nothing short of every habit reaches the darkest step', () {
+      expect(completionTier(0.999), 3);
+      expect(completionTier(0.75), 3);
+    });
+
+    test('thirds, with the boundary belonging to the lower step', () {
+      expect(completionTier(2 / 3), 2);
+      expect(completionTier(0.67), 3);
+      expect(completionTier(0.5), 2);
+      expect(completionTier(1 / 3), 1);
+      expect(completionTier(0.34), 2);
+      expect(completionTier(0.25), 1);
+    });
+
+    test('any progress at all is off the empty step', () {
+      expect(completionTier(0.001), 1);
+    });
+
+    test('never decreases as the rate rises, and stays on the 0-4 ramp', () {
+      var previous = 0;
+      for (var i = 0; i <= 100; i++) {
+        final tier = completionTier(i / 100);
+        expect(tier, inInclusiveRange(0, 4));
+        expect(tier, greaterThanOrEqualTo(previous),
+            reason: 'tier fell going from ${(i - 1) / 100} to ${i / 100}');
+        previous = tier;
+      }
+    });
+  });
+
   group('HabitWeekdayProfile — pooled (§10.5)', () {
     test('each weekday pools only its own eligible days', () {
       final profile = HabitWeekdayProfile.of(habits, period);
@@ -334,6 +583,64 @@ void main() {
       expect(recap.days[3].rate, closeTo(0.5, 1e-9));
       // Mon 08-31 has nothing scheduled at all.
       expect(recap.days[0].rate, isNull);
+    });
+
+    group("today's bar", () {
+      // Four habits scheduled Wed and today (Thu). On Wed three of four were
+      // done. Today one is done and three are still pending.
+      HabitStatsInput morningHabit(String id, HabitDayOutcome wed,
+              HabitDayOutcome thu) =>
+          HabitStatsInput(
+            habitId: id,
+            title: id,
+            colorIndex: 0,
+            iconName: 'check',
+            currentStreak: 0,
+            longestStreak: 0,
+            outcomes: {'2026-09-02': wed, today: thu},
+            entries: const {},
+          );
+
+      final four = [
+        morningHabit('a', HabitDayOutcome.done, HabitDayOutcome.done),
+        morningHabit('b', HabitDayOutcome.done, HabitDayOutcome.pending),
+        morningHabit('c', HabitDayOutcome.done, HabitDayOutcome.pending),
+        morningHabit('d', HabitDayOutcome.missed, HabitDayOutcome.pending),
+      ];
+
+      test('counts the habits still to do: 1 of 4 is 0.25, not 1.0', () {
+        final todayBar = recapOf(four).days.singleWhere((d) => d.isToday);
+        expect(todayBar.rate, 0.25);
+      });
+
+      test('a settled day beside it is unchanged', () {
+        final recap = recapOf(four);
+        // Wed 09-02: 3 of 4, the same as it has always been.
+        expect(recap.days[2].rate, 0.75);
+      });
+
+      test("the week's headline still leaves today's open habits out", () {
+        // The two answer different questions. Wed 3/4 plus today's one done
+        // habit: 4 of 5. Today's three pending habits are NOT held against the
+        // week, even though today's own bar counts them.
+        expect(recapOf(four).completionRate, closeTo(4 / 5, 1e-9));
+      });
+
+      test('nothing scheduled today is null and all pending is 0.0', () {
+        expect(
+          recapOf(const []).days.singleWhere((d) => d.isToday).rate,
+          isNull,
+        );
+
+        final allPending = [
+          morningHabit('a', HabitDayOutcome.done, HabitDayOutcome.pending),
+          morningHabit('b', HabitDayOutcome.done, HabitDayOutcome.pending),
+        ];
+        expect(
+          recapOf(allPending).days.singleWhere((d) => d.isToday).rate,
+          0.0,
+        );
+      });
     });
 
     test('the weekly rate excludes excused and pending days', () {

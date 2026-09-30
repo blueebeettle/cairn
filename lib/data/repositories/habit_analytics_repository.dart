@@ -7,6 +7,27 @@ import '../database/app_database.dart';
 import 'habits_repository.dart';
 import 'settings_repository.dart';
 
+/// The one place a [HabitSnapshot] becomes the engine's Drift-free
+/// [HabitStatsInput].
+///
+/// Shared, rather than private to the repository, because a second consumer
+/// needs the same mapping: the Today screen's momentum strip pools its own
+/// per-day rates from the snapshots it already watches, and a second copy of
+/// this conversion — or of the pooling done against raw snapshots — is exactly
+/// how the strip and the Habits recap would come to disagree about a day.
+extension HabitSnapshotStatsInput on HabitSnapshot {
+  HabitStatsInput toStatsInput() => HabitStatsInput(
+        habitId: habit.id,
+        title: habit.title,
+        colorIndex: habit.colorIndex,
+        iconName: habit.iconName,
+        currentStreak: streaks.current,
+        longestStreak: streaks.longest,
+        outcomes: streaks.outcomes,
+        entries: entries,
+      );
+}
+
 /// Database wiring for the habit half of the Stats screen (SPEC.md §10.5).
 ///
 /// Deliberately separate from `AnalyticsRepository`, for the same reason
@@ -60,19 +81,7 @@ class HabitAnalyticsRepository {
   /// contribution to the pooled numbers and the heatmap.
   Future<List<HabitStatsInput>> _inputs() async {
     final snapshots = await _habits.loadActiveSnapshots();
-    return [
-      for (final snapshot in snapshots)
-        HabitStatsInput(
-          habitId: snapshot.habit.id,
-          title: snapshot.habit.title,
-          colorIndex: snapshot.habit.colorIndex,
-          iconName: snapshot.habit.iconName,
-          currentStreak: snapshot.streaks.current,
-          longestStreak: snapshot.streaks.longest,
-          outcomes: snapshot.streaks.outcomes,
-          entries: snapshot.entries,
-        ),
-    ];
+    return [for (final snapshot in snapshots) snapshot.toStatsInput()];
   }
 
   // ── Assembly ─────────────────────────────────────────────────────────────

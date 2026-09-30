@@ -73,13 +73,26 @@ void main() {
       weekStart: DateTime.monday,
     );
 
-    final completedPastDays = days.where((d) => !d.isFuture && d.completed).length;
-    final uncompletedPastDays = days.where((d) => !d.isFuture && !d.completed).length;
+    // A day "had progress" when at least one habit was done on it — the
+    // strip's rate is above zero. (It used to be a flat any-habit-done flag;
+    // the rate carries the same question and now also the proportion.)
+    bool hadProgress(MomentumDay d) => d.rate != null && d.rate! > 0;
+    final completedPastDays = days.where((d) => !d.isFuture && hadProgress(d)).length;
+    final uncompletedPastDays = days.where((d) => !d.isFuture && !hadProgress(d)).length;
 
     // Must show a partial pattern: not all past days completed, but some completed
     expect(completedPastDays, greaterThan(0));
     expect(uncompletedPastDays, greaterThanOrEqualTo(1),
         reason: 'At least 1-2 days in the current week must show as NOT completed');
+
+    // Today's pip must show the same partial progress the cairn does below: a
+    // genuine fraction of today's habits, not the instant 100% that counting
+    // only the already-resolved habits used to give the moment one was ticked.
+    final todayRate = days.singleWhere((d) => d.isToday).rate;
+    expect(todayRate, isNotNull);
+    expect(todayRate, greaterThan(0));
+    expect(todayRate, lessThan(1),
+        reason: 'Today has habits still to do, so its fill must not be full');
 
     // Today's cairn-stone count must be partial (not 0 and not full 4)
     final dueToday = snapshots.where((s) => s.isScheduledToday).toList();
