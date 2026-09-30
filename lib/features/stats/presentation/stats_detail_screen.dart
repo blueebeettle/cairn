@@ -12,6 +12,7 @@ import '../../../data/repositories/analytics_repository.dart';
 import '../../../features/habits/domain/habit_presentation.dart';
 import '../../../features/habits/presentation/widgets/habit_marks.dart';
 import '../../../theme/app_theme.dart';
+import 'widgets/range_scope.dart';
 
 /// The Stats screen's "See more" destination — everything the redesigned
 /// [StatsScreen] no longer has room for above the fold.
@@ -27,6 +28,13 @@ import '../../../theme/app_theme.dart';
 /// state, so whatever range was selected there is still in force here and
 /// these cards move with it, without this screen owning a second picker. The
 /// selected range is named at the top so the numbers are not unlabelled.
+///
+/// Two things here are deliberately NOT range-bound, and sit under that header
+/// all the same: the habit leaderboard's current streaks (whole-history, never
+/// re-sliced — see `habit_statistics.dart`) and the habit activity heatmap
+/// (a trailing year). Both wear the same [FixedRangePill] the main Stats screen
+/// uses, and the header says what the pill means, so the header naming a range
+/// is not read as covering them.
 class StatsDetailScreen extends ConsumerWidget {
   const StatsDetailScreen({super.key});
 
@@ -60,9 +68,25 @@ class StatsDetailScreen extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              range.label,
-              style: textTheme.labelLarge?.copyWith(color: tokens.textSecondary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  range.label,
+                  style: textTheme.labelLarge
+                      ?.copyWith(color: tokens.textSecondary),
+                ),
+                // Only when there is something it applies to: the two fixed
+                // pieces are both habit cards.
+                if (hasHabits) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Anything marked "${RangeScope.fixed}" stays put when you '
+                    'change the range.',
+                    style: textTheme.bodySmall?.copyWith(color: tokens.textMuted),
+                  ),
+                ],
+              ],
             ),
           ),
           bundleAsync.when(
@@ -853,11 +877,22 @@ class StatsDetailScreen extends ConsumerWidget {
                     ),
                     if (habitBundle.leaderboard.isNotEmpty) ...[
                       const SizedBox(height: 16),
-                      Text(
-                        'Current streaks',
-                        style: textTheme.labelLarge?.copyWith(
-                          color: tokens.textSecondary,
-                        ),
+                      // A streak is the whole chain up to now — never re-sliced
+                      // to the range — so unlike the figures above it, this list
+                      // does not move when the range does.
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            'Current streaks',
+                            style: textTheme.labelLarge?.copyWith(
+                              color: tokens.textSecondary,
+                            ),
+                          ),
+                          const FixedRangePill(),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       for (final entry in habitBundle.leaderboard.take(5))
@@ -923,7 +958,16 @@ class StatsDetailScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Habit activity', style: textTheme.titleMedium),
+            // The window is a trailing year whatever the range above says.
+            Wrap(
+              spacing: 10,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('Habit activity', style: textTheme.titleMedium),
+                const FixedRangePill(),
+              ],
+            ),
             const SizedBox(height: 2),
             Text(
               'Distinct habits completed each day, over the last year.',

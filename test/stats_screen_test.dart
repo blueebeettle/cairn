@@ -43,10 +43,14 @@ void main() {
 
   /// A [TimeService] pinned to [today] in UTC, so the period the screen
   /// derives from the range picker is the same on every machine.
-  TimeService fixedTime() => TimeService(
+  ///
+  /// [nowUtc] moves the clock for the cases that need a day other than that
+  /// Monday — the Week range's daily trail depends on how far into the week
+  /// "today" is.
+  TimeService fixedTime([DateTime? nowUtc]) => TimeService(
         weekStart: DateTime.monday,
         nowProvider: () =>
-            DateTime.utc(2026, 9, 14, 12).millisecondsSinceEpoch,
+            (nowUtc ?? DateTime.utc(2026, 9, 14, 12)).millisecondsSinceEpoch,
         localize: (ms) =>
             DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
         offsetMinutesAt: (_) => 0,
@@ -165,6 +169,8 @@ void main() {
     FocusStats focusStats = FocusStats.empty,
     HabitStatsBundle? habitBundle,
     List<HabitSnapshot> habitSnapshots = const [],
+    DateTime? nowUtc,
+    double textScale = 1.0,
   }) {
     final period = bundle?.period ?? periodFor(range);
     return ProviderScope(
@@ -173,7 +179,7 @@ void main() {
       // resolved providers.
       key: UniqueKey(),
       overrides: [
-        timeServiceProvider.overrideWithValue(fixedTime()),
+        timeServiceProvider.overrideWithValue(fixedTime(nowUtc)),
         statsRangeProvider.overrideWith((ref) => range),
         statsBundleProvider.overrideWith(
           (ref) => Stream<StatsBundle>.value(
@@ -200,7 +206,15 @@ void main() {
         ),
         habitSnapshotsProvider.overrideWith((ref) async => habitSnapshots),
       ],
-      child: MaterialApp(theme: buildTheme(), home: const StatsScreen()),
+      child: MaterialApp(
+        theme: buildTheme(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: const StatsScreen(),
+      ),
     );
   }
 
@@ -779,6 +793,12 @@ void main() {
             contains('not your highest total'));
         expect(tooltipOver('freezes used (this month)'),
             contains('Not affected by the range above'));
+        // The tile's label says "freezes"; its tooltip must not switch to
+        // "rest days" for the same number.
+        expect(tooltipOver('freezes used (this month)'),
+            startsWith('Freezes used'));
+        expect(tooltipOver('freezes used (this month)').toLowerCase(),
+            isNot(contains('rest day')));
       });
 
       testWidgets('tile labels do not overflow at 390pt', (tester) async {
@@ -920,6 +940,371 @@ void main() {
         );
         expect(tooltip.message, contains('calendar'));
         expect(tooltip.message, contains('Not affected by the range'));
+      });
+    });
+
+    // The Week range is the calendar week to date. Bucketed by week that is a
+    // single sparse column, so it is drawn a stone per day instead.
+    group('StatsScreen ($themeName) — the Week range draws a stone per day', () {
+      final wednesday = DateTime.utc(2026, 9, 16, 12); // week began Mon 09-14
+      final sunday = DateTime.utc(2026, 9, 20, 12); // the week's last day
+
+      String isoOf(DateTime d) => TimeService.formatIsoDate(d.year, d.month, d.day);
+
+      StatsPeriod periodAt(StatsRange range, DateTime now) => switch (range) {
+            StatsRange.week => StatsPeriod.week(fixedTime(now), isoOf(now)),
+            StatsRange.month => StatsPeriod.lastNDays(isoOf(now), 30),
+            StatsRange.quarter => StatsPeriod.lastNDays(isoOf(now), 90),
+            StatsRange.allTime => StatsPeriod.allTime,
+          };
+
+      Future<void> pumpTrail(
+        WidgetTester tester, {
+        required DateTime now,
+        required Map<String, int> minutes,
+        StatsRange range = StatsRange.week,
+        double textScale = 1.0,
+      }) async {
+        tester.view.physicalSize = const Size(360, 1200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          createTestWidget(
+            buildTheme: buildTheme,
+            range: range,
+            nowUtc: now,
+            textScale: textScale,
+            bundle: bundleOf(
+              period: periodAt(range, now),
+              completionRate: const CompletionRate(completed: 5, abandoned: 1),
+              minutesByDate: minutes,
+              totalFocusMinutes: minutes.values.fold(0, (a, b) => a + b),
+              activeDayCount: minutes.length,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      List<CairnGlyph> glyphs(WidgetTester tester) =>
+          tester.widgetList<CairnGlyph>(find.byType(CairnGlyph)).toList();
+
+      testWidgets('a Wednesday is Mon, Tue and Now — three stones, not one week',
+          (tester) async {
+        await pumpTrail(
+          tester,
+          now: wednesday,
+          // Monday clears the 25-minute goal, Tuesday is empty, today is a
+          // little under half of it.
+          minutes: const {'2026-09-14': 30, '2026-09-16': 10},
+        );
+
+        final g = glyphs(tester);
+        expect(g, hasLength(3));
+        expect(g.map((c) => c.stoneCount), [4, 0, 2]);
+
+        expect(find.text('Mon'), findsOneWidget);
+        expect(find.text('Tue'), findsOneWidget);
+        expect(find.text('Now'), findsOneWidget);
+        // Not the weekly labels.
+        expect(find.text('W1'), findsNothing);
+        expect(find.text('By day'), findsOneWidget);
+        expect(find.text('By week'), findsNothing);
+
+        // The same visual language as the weekly trail: only the newest column
+        // carries the marker and is at full size.
+        expect(g.map((c) => c.showMarker), [false, false, true]);
+        expect(g.last.scale, closeTo(journeyMaxScale, 1e-9));
+        expect(g.first.scale, closeTo(journeyMinScale, 1e-9));
+        expect(g.last.opacity, closeTo(1.0, 1e-9));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('days that have not happened yet are not drawn', (tester) async {
+        await pumpTrail(
+          tester,
+          now: wednesday,
+          minutes: const {'2026-09-14': 30},
+        );
+
+        for (final later in ['Thu', 'Fri', 'Sat', 'Sun']) {
+          expect(find.text(later), findsNothing,
+              reason: '$later has not happened');
+        }
+      });
+
+      testWidgets('a Sunday draws the whole week, seven days ending in Now',
+          (tester) async {
+        await pumpTrail(
+          tester,
+          now: sunday,
+          minutes: {
+            for (var d = 14; d <= 20; d++) '2026-09-$d': 20,
+          },
+        );
+
+        expect(glyphs(tester), hasLength(7));
+        for (final day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
+          expect(find.text(day), findsOneWidget);
+        }
+        // Sunday is today, so it is "Now" rather than "Sun".
+        expect(find.text('Now'), findsOneWidget);
+        expect(find.text('Sun'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('on a Monday there is a single stone, and it still reads right',
+          (tester) async {
+        // The fixture's own day: Monday 2026-09-14, the first day of the week.
+        // One column is correct and expected here, not a bug to work around.
+        await pumpTrail(
+          tester,
+          now: DateTime.utc(2026, 9, 14, 12),
+          minutes: const {'2026-09-14': 25},
+        );
+
+        final g = glyphs(tester);
+        expect(g, hasLength(1));
+        expect(g.single.stoneCount, 4);
+        expect(g.single.showMarker, isTrue);
+        // Drawn at full trail size rather than the bottom of the ramp.
+        expect(g.single.scale, closeTo(journeyMaxScale, 1e-9));
+        expect(g.single.opacity, closeTo(1.0, 1e-9));
+        expect(find.text('Now'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a Monday with nothing logged yet is one empty stone, no crash',
+          (tester) async {
+        await pumpTrail(
+          tester,
+          now: DateTime.utc(2026, 9, 14, 12),
+          // Focus elsewhere in the year, none this week — the screen is past
+          // its empty state but this week is bare.
+          minutes: const {'2026-09-01': 40},
+        );
+
+        final g = glyphs(tester);
+        expect(g, hasLength(1));
+        expect(g.single.stoneCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('30 days keeps its weekly columns and says so', (tester) async {
+        await pumpTrail(
+          tester,
+          now: wednesday,
+          range: StatsRange.month,
+          minutes: {
+            for (var i = 0; i < 40; i++) TimeService.addDays('2026-09-16', -i): 30,
+          },
+        );
+
+        // 08-17 .. 09-16 touches five calendar weeks.
+        expect(glyphs(tester), hasLength(5));
+        expect(find.text('W1'), findsOneWidget);
+        expect(find.text('W4'), findsOneWidget);
+        expect(find.text('Now'), findsOneWidget);
+        expect(find.text('By week'), findsOneWidget);
+        expect(find.text('By day'), findsNothing);
+        // ...and none of the daily labels.
+        expect(find.text('Mon'), findsNothing);
+      });
+
+      testWidgets(
+          'moving the picker to Week redraws the trail by day at once, even '
+          'while the bundle is still the previous range\'s', (tester) async {
+        // The bundle here is fixed at a 30-day period, so after the tap the
+        // screen briefly holds a Week selection with a 30-day bundle — the
+        // frame a real provider spends reloading. The daily trail must not
+        // read the bundle's month-long start and draw thirty stones.
+        await pumpTrail(
+          tester,
+          now: wednesday,
+          range: StatsRange.month,
+          minutes: {
+            for (var i = 0; i < 40; i++) TimeService.addDays('2026-09-16', -i): 30,
+          },
+        );
+        expect(glyphs(tester), hasLength(5));
+
+        await tester.tap(find.text('Week'));
+        await tester.pumpAndSettle();
+
+        expect(glyphs(tester), hasLength(3)); // Mon, Tue, Wed
+        expect(find.text('By day'), findsOneWidget);
+
+        await tester.tap(find.text('30d'));
+        await tester.pumpAndSettle();
+        expect(glyphs(tester), hasLength(5));
+        expect(find.text('By week'), findsOneWidget);
+      });
+
+      for (final range in StatsRange.values) {
+        testWidgets('${range.label}: no overflow at 200% text on a 360dp phone',
+            (tester) async {
+          await pumpTrail(
+            tester,
+            now: sunday,
+            range: range,
+            textScale: 2.0,
+            minutes: {
+              for (var i = 0; i < 120; i++)
+                TimeService.addDays('2026-09-20', -i): 35,
+            },
+          );
+          expect(tester.takeException(), isNull);
+        });
+      }
+    });
+
+    // Two tiles follow the range picker and two never do. Each already said so
+    // in its own label and a tooltip; what was missing was any visible
+    // difference between the groups.
+    group('StatsScreen ($themeName) — which numbers move with the range', () {
+      final snapshots = [
+        snapshotWithExcused('h1', const ['2026-09-02', '2026-09-09']),
+        snapshotWithExcused('h2', const ['2026-09-05']),
+      ];
+
+      const focus = FocusStats(
+        focusMinutesToday: 30,
+        currentStreakDays: 12,
+        longestStreakDays: 45,
+        dailyGoalMinutes: 25,
+      );
+
+      Future<void> pumpRange(WidgetTester tester, StatsRange range) async {
+        tester.view.physicalSize = const Size(390, 2600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          createTestWidget(
+            buildTheme: buildTheme,
+            range: range,
+            focusStats: focus,
+            habitSnapshots: snapshots,
+            bundle: bundleOf(
+              period: periodFor(range),
+              completionRate: const CompletionRate(completed: 8, abandoned: 2),
+              minutesByDate: const {today: 60},
+              activeDayCount: 4,
+              weekdayProfile: const WeekdayProfile([
+                WeekdayBin(weekday: 1, activeDays: 3, totalMinutes: 60),
+                WeekdayBin(weekday: 2, activeDays: 2, totalMinutes: 180),
+                WeekdayBin(weekday: 3, activeDays: 0, totalMinutes: 0),
+                WeekdayBin(weekday: 4, activeDays: 0, totalMinutes: 0),
+                WeekdayBin(weekday: 5, activeDays: 0, totalMinutes: 0),
+                WeekdayBin(weekday: 6, activeDays: 0, totalMinutes: 0),
+                WeekdayBin(weekday: 7, activeDays: 0, totalMinutes: 0),
+              ]),
+            ),
+            heatmapCells: const [
+              HeatmapCell(date: '2026-09-12', minutes: 34, level: 2),
+            ],
+            habitBundle: habitBundleOf(
+              period: periodFor(range),
+              totalCheckOffs: 70,
+              activeHabitCount: 2,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      double top(WidgetTester tester, String text) =>
+          tester.getTopLeft(find.text(text)).dy;
+
+      for (final range in StatsRange.values) {
+        testWidgets(
+            '${range.label}: the tiles sit under headings that say which side '
+            'of the picker they are on', (tester) async {
+          await pumpRange(tester, range);
+
+          // Visible text, no interaction: nothing here needs a long-press.
+          expect(find.text('FOLLOWS THE RANGE'), findsOneWidget);
+          expect(find.text('SAME FOR EVERY RANGE'), findsOneWidget);
+
+          final follows = top(tester, 'FOLLOWS THE RANGE');
+          final same = top(tester, 'SAME FOR EVERY RANGE');
+          expect(follows, lessThan(same));
+
+          // The pair that follows the picker is under the first heading...
+          for (final label in ['strongest day (avg)', 'habits kept / day']) {
+            final y = top(tester, label);
+            expect(y, greaterThan(follows), reason: label);
+            expect(y, lessThan(same), reason: '$label is not in the fixed group');
+          }
+          // ...and the pair that never does is under the second.
+          for (final label in [
+            'best streak ever (days)',
+            'freezes used (this month)',
+          ]) {
+            expect(top(tester, label), greaterThan(same), reason: label);
+          }
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets(
+            '${range.label}: the heatmap wears a badge saying it ignores the range',
+            (tester) async {
+          await pumpRange(tester, range);
+
+          // Once, on the Activity card, in words — not in a tooltip.
+          expect(find.text('Same for every range'), findsOneWidget);
+          expect(find.text('Focus minutes · last 365 days'), findsOneWidget);
+
+          final activity = top(tester, 'ACTIVITY');
+          final badge = top(tester, 'Same for every range');
+          expect(badge, greaterThan(activity));
+          // It belongs to the Activity card, above the tile groups.
+          expect(badge, lessThan(top(tester, 'FOLLOWS THE RANGE')));
+        });
+
+        testWidgets(
+            '${range.label}: the hero still names the range exactly once',
+            (tester) async {
+          // The new headings must not repeat the range's own name — the hero's
+          // label is how the screen says what the picker is set to.
+          await pumpRange(tester, range);
+          expect(find.text(range.label.toUpperCase()), findsOneWidget);
+        });
+      }
+
+      testWidgets('tapping through the ranges moves exactly the range-bound tiles',
+          (tester) async {
+        await pumpRange(tester, StatsRange.month);
+
+        // Fixed: identical at every range.
+        void expectFixedUnchanged() {
+          expect(find.text('45'), findsOneWidget); // best streak ever
+          expect(find.text('3'), findsOneWidget); // freezes this month
+        }
+
+        // Range-bound: 70 check-offs over the selected window's days.
+        final habitsKeptPerDayAt = {
+          'Week': '10.0', // 70 / 7
+          '30d': '2.3', // 70 / 30
+          '90d': '0.8', // 70 / 90
+        };
+        for (final entry in habitsKeptPerDayAt.entries) {
+          await tester.tap(find.text(entry.key));
+          await tester.pumpAndSettle();
+          expect(find.text(entry.value), findsOneWidget,
+              reason: 'habits kept / day at ${entry.key}');
+          expectFixedUnchanged();
+        }
+
+        // All time has no honest denominator, so that tile goes to an em dash —
+        // while the two fixed tiles still read the same.
+        await tester.tap(find.text('All'));
+        await tester.pumpAndSettle();
+        expect(find.text('10.0'), findsNothing);
+        expect(find.text('2.3'), findsNothing);
+        expect(find.text('0.8'), findsNothing);
+        expectFixedUnchanged();
       });
     });
 

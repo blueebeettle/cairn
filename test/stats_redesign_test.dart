@@ -301,6 +301,182 @@ void main() {
     });
   });
 
+  // The Week range is the calendar week to date: at most a few days old, so a
+  // weekly bucket is one sparse column. Drawn a day at a time instead.
+  group('journeyDays — the Week range\'s trail', () {
+    const goal = FocusStats.defaultDailyGoalMinutes; // 25 a day
+
+    List<JourneyDay> daysFor(
+      String todayLocal, {
+      Map<String, int> minutes = const {},
+      int dailyGoalMinutes = goal,
+      int weekStart = DateTime.monday,
+    }) {
+      final t = TimeService(weekStart: weekStart);
+      return journeyDays(
+        minutesByDate: minutes,
+        weekStartLocalDate: t.startOfWeek(todayLocal),
+        todayLocalDate: todayLocal,
+        dailyGoalMinutes: dailyGoalMinutes,
+      );
+    }
+
+    test('a Monday is a single column, and it is "Now"', () {
+      // 2026-09-14 is a Monday — the first day of the week, so there is exactly
+      // one day to draw. That is correct, not a degenerate case to avoid.
+      final days = daysFor('2026-09-14');
+      expect(days, hasLength(1));
+      expect(days.single.date, '2026-09-14');
+      expect(days.single.isNow, isTrue);
+      // Nothing to taper against: full trail size, full strength.
+      expect(days.single.scale, journeyMaxScale);
+      expect(days.single.opacity, 1.0);
+    });
+
+    test('a Wednesday is Mon, Tue, Wed — oldest first, ending today', () {
+      final days = daysFor('2026-09-16');
+      expect(days.map((d) => d.date), ['2026-09-14', '2026-09-15', '2026-09-16']);
+      expect(days.map((d) => d.isNow), [false, false, true]);
+    });
+
+    test('a Sunday is the whole week, seven columns', () {
+      final days = daysFor('2026-09-20');
+      expect(days, hasLength(7));
+      expect(days.first.date, '2026-09-14');
+      expect(days.last.date, '2026-09-20');
+      expect(days.where((d) => d.isNow), hasLength(1));
+    });
+
+    test('follows the user\'s week start, not a fixed Monday', () {
+      // Sunday-start: the week containing Wed 09-16 began Sun 09-13.
+      final days = daysFor('2026-09-16', weekStart: DateTime.sunday);
+      expect(days.first.date, '2026-09-13');
+      expect(days, hasLength(4));
+    });
+
+    test('never more than a week, however far back the start is', () {
+      final days = journeyDays(
+        minutesByDate: const {},
+        weekStartLocalDate: '2026-01-01',
+        todayLocalDate: '2026-09-16',
+        dailyGoalMinutes: goal,
+      );
+      expect(days, hasLength(7));
+      expect(days.last.date, '2026-09-16');
+    });
+
+    test('days after today are never drawn', () {
+      final days = daysFor('2026-09-16');
+      expect(days.map((d) => d.date), isNot(contains('2026-09-17')));
+    });
+
+    test('a day with no focus keeps its column, with no stones', () {
+      final days = daysFor(
+        '2026-09-16',
+        minutes: const {'2026-09-14': 30, '2026-09-16': 10},
+      );
+      expect(days[1].date, '2026-09-15');
+      expect(days[1].minutes, 0);
+      expect(days[1].stones, 0);
+    });
+
+    group('stones are a day\'s minutes against one day of the goal', () {
+      // Goal 20: the quarter marks land on whole minutes (5, 10, 15, 20).
+      const tidy = 20;
+
+      int stonesFor(int minutes) => daysFor(
+            '2026-09-14',
+            minutes: {'2026-09-14': minutes},
+            dailyGoalMinutes: tidy,
+          ).single.stones;
+
+      test('the bands step evenly to a full cairn at the goal', () {
+        expect(stonesFor(5), 1);
+        expect(stonesFor(10), 2);
+        expect(stonesFor(15), 3);
+        expect(stonesFor(20), 4);
+      });
+
+      test('none is zero stones, not one', () {
+        expect(stonesFor(0), 0);
+      });
+
+      test('several times the goal still caps at four', () {
+        expect(stonesFor(200), 4);
+      });
+
+      test('a goal of zero is zero stones rather than a divide by zero', () {
+        final days = daysFor(
+          '2026-09-14',
+          minutes: const {'2026-09-14': 300},
+          dailyGoalMinutes: 0,
+        );
+        expect(days.single.stones, 0);
+      });
+
+      test('a full-goal week and a full-goal day are each a full cairn', () {
+        // The same absolute yardstick at a finer granularity: a week of
+        // full-goal days is a full weekly cairn, and each of those days is a
+        // full daily one.
+        final week = journeyWeeks(
+          minutesByDate: const {'2026-09-14': tidy * 7},
+          periodStart: '2026-09-14',
+          todayLocalDate: '2026-09-14',
+          startOfWeek: time.startOfWeek,
+          dailyGoalMinutes: tidy,
+        );
+        final day = daysFor(
+          '2026-09-14',
+          minutes: const {'2026-09-14': tidy},
+          dailyGoalMinutes: tidy,
+        );
+        expect(week.single.stones, 4);
+        expect(day.single.stones, 4);
+      });
+    });
+
+    group('the daily and weekly trails share one scaling ramp', () {
+      // One motif, two granularities: only what a column stands for changes.
+      // The ramp is a single helper, and this pins that it stays that way — a
+      // three-column daily trail and a three-column weekly trail must taper
+      // identically.
+      test('three days and three weeks scale and fade the same way', () {
+        final days = daysFor('2026-09-16'); // Mon, Tue, Wed
+        final weeks = journeyWeeks(
+          minutesByDate: const {'2026-08-31': 60, '2026-09-14': 60},
+          periodStart: '2026-08-31',
+          todayLocalDate: '2026-09-16',
+          startOfWeek: time.startOfWeek,
+          dailyGoalMinutes: goal,
+        );
+
+        expect(days, hasLength(3));
+        expect(weeks, hasLength(3));
+        expect(days.map((d) => d.scale).toList(),
+            weeks.map((w) => w.scale).toList());
+        expect(days.map((d) => d.opacity).toList(),
+            weeks.map((w) => w.opacity).toList());
+      });
+
+      test('every column count ramps from the same minimum to the same maximum',
+          () {
+        for (var n = 2; n <= 7; n++) {
+          // n days ending on a date n-1 days into a Monday-start week.
+          final todayLocal = TimeService.addDays('2026-09-14', n - 1);
+          final days = daysFor(todayLocal);
+          expect(days, hasLength(n));
+          expect(days.first.scale, closeTo(journeyMinScale, 1e-9));
+          expect(days.last.scale, closeTo(journeyMaxScale, 1e-9));
+          expect(days.last.opacity, closeTo(1.0, 1e-9));
+          for (var i = 1; i < n; i++) {
+            expect(days[i].scale, greaterThan(days[i - 1].scale));
+            expect(days[i].opacity, greaterThan(days[i - 1].opacity));
+          }
+        }
+      });
+    });
+  });
+
   group('strongestWeekdayLabel', () {
     test('picks the highest mean, not the highest total', () {
       // Monday totals more minutes but over more days; Friday's mean is

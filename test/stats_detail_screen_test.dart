@@ -75,9 +75,12 @@ void main() {
     HabitStatsBundle? habitBundle,
     List<HabitHeatmapCell>? habitHeatmapCells,
     HeatmapThresholds? habitThresholds,
+    StatsRange? range,
+    double textScale = 1.0,
   }) {
     return ProviderScope(
       overrides: [
+        if (range != null) statsRangeProvider.overrideWith((ref) => range),
         statsBundleProvider.overrideWith(
           (ref) => Stream<StatsBundle>.value(bundle ?? emptyBundle()),
         ),
@@ -94,7 +97,15 @@ void main() {
           (ref) => Future.value(habitThresholds ?? habitHeatmapFallbackThresholds),
         ),
       ],
-      child: MaterialApp(theme: buildTheme(), home: const StatsDetailScreen()),
+      child: MaterialApp(
+        theme: buildTheme(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: const StatsDetailScreen(),
+      ),
     );
   }
 
@@ -365,6 +376,124 @@ void main() {
         expect(find.text('Nothing logged yet'), findsOneWidget);
         expect(find.text('When you focus best'), findsNothing);
         expect(find.text('Habits'), findsNothing);
+      });
+    });
+
+    // The header names the selected range, and most of what is under it moves
+    // with it. Two pieces do not — the streak list (whole history) and the
+    // habit heatmap (a trailing year) — so they wear the same badge the main
+    // Stats screen uses, and the header says what it means.
+    group('StatsDetailScreen ($themeName) — range labelling', () {
+      const habitBundle = HabitStatsBundle(
+        period: period,
+        completionRate: HabitCompletionRate(done: 6, eligible: 8),
+        weekdayProfile: HabitWeekdayProfile([]),
+        totalCheckOffs: 11,
+        activeHabitCount: 2,
+        leaderboard: [
+          HabitLeaderboardEntry(
+            habitId: 'h1',
+            title: 'Read',
+            colorIndex: 0,
+            iconName: 'book',
+            currentStreak: 9,
+            longestStreak: 14,
+          ),
+        ],
+      );
+
+      final focusBundle = StatsBundle(
+        period: period,
+        completionRate: const CompletionRate(completed: 10, abandoned: 2),
+        peakWindow: emptyPeak(),
+        weekdayProfile: emptyProfile(),
+        interruptions: emptyInterruption(),
+        focusRating: FocusRatingStats.empty,
+        timeAllocation: TimeAllocation.empty,
+        minutesByDate: const {'2026-09-14': 250},
+        totalFocusMinutes: 250,
+        activeDayCount: 5,
+      );
+
+      Widget screen(StatsRange range, {double textScale = 1.0}) =>
+          createTestWidget(
+            buildTheme: buildTheme,
+            range: range,
+            bundle: focusBundle,
+            habitBundle: habitBundle,
+            habitHeatmapCells: const [
+              HabitHeatmapCell(date: '2026-09-14', doneCount: 2, level: 4),
+            ],
+            textScale: textScale,
+          );
+
+      for (final range in StatsRange.values) {
+        testWidgets('${range.label}: the header names the range and the fixed '
+            'pieces are marked', (tester) async {
+          await tester.pumpWidget(screen(range));
+          await tester.pumpAndSettle();
+
+          // Reads sensibly for each of the four values.
+          expect(find.text(range.label), findsOneWidget);
+          expect(find.text('Focused'), findsOneWidget); // a range-bound card
+          expect(
+            find.text('Anything marked "Same for every range" stays put when '
+                'you change the range.'),
+            findsOneWidget,
+          );
+
+          // Exactly the two fixed pieces wear the badge — the streak list and
+          // the habit heatmap — and they do so at every range.
+          final pills = find.text('Same for every range');
+          expect(pills, findsNWidgets(2));
+          expect(
+            find.descendant(
+              of: find.ancestor(
+                of: find.text('Current streaks'),
+                matching: find.byType(Wrap),
+              ),
+              matching: pills,
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: find.ancestor(
+                of: find.text('Habit activity'),
+                matching: find.byType(Wrap),
+              ),
+              matching: pills,
+            ),
+            findsOneWidget,
+          );
+        });
+      }
+
+      testWidgets('without any habits there is nothing fixed to mark',
+          (tester) async {
+        await tester.pumpWidget(createTestWidget(
+          buildTheme: buildTheme,
+          range: StatsRange.week,
+          bundle: focusBundle,
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.text('This week'), findsOneWidget);
+        expect(find.text('Same for every range'), findsNothing);
+        expect(find.textContaining('stays put'), findsNothing);
+      });
+
+      testWidgets('the badges and the note fit at 200% text on a 360dp phone',
+          (tester) async {
+        tester.view.physicalSize = const Size(360, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        for (final range in StatsRange.values) {
+          await tester.pumpWidget(screen(range, textScale: 2.0));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: range.label);
+        }
       });
     });
   }

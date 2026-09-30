@@ -19,13 +19,14 @@ import '../../../data/repositories/stats_repository.dart';
 import '../../../features/habits/presentation/widgets/habit_milestone.dart';
 import '../../../theme/app_theme.dart';
 import 'stats_detail_screen.dart';
+import 'widgets/range_scope.dart';
 
 /// The Stats screen, redesigned against `claude-outputs/designs/Stats.dc.html`
 /// and `Stats.Dark.dc.html`.
 ///
 /// Five things, in order: the range picker, a hero card for the selected
 /// period's completion rate, the "Your journey" cairn trail, the focus
-/// activity heatmap, and a 2×2 grid of single-number tiles. Everything the
+/// activity heatmap, and four single-number tiles. Everything the
 /// pre-redesign screen showed below those — the peak window, the day-of-week
 /// profile, the time allocation, interruptions, the focus rating, the habit
 /// leaderboard and the habit heatmap — moved to [StatsDetailScreen] behind the
@@ -35,6 +36,15 @@ import 'stats_detail_screen.dart';
 /// yet". Nothing in this app tracks month-over-month history, so that claim
 /// could not be checked before making it. The streak-versus-personal-best line
 /// takes its place — same encouraging role, and true.
+///
+/// **Not everything follows the range picker, on purpose, and the screen says
+/// which.** The hero, the journey trail and two of the tiles are recomputed for
+/// the selected range. The activity heatmap (a trailing year), the all-time best
+/// streak and this month's freezes are not — each is a fixed window by design,
+/// and each was already computed correctly for its own. What was missing was any
+/// visible difference between the two kinds, so the tiles are split into a
+/// "follows the range" pair and a "same for every range" pair under their own
+/// headings, and the heatmap wears a [FixedRangePill]. See [RangeScope].
 class StatsScreen extends ConsumerWidget {
   const StatsScreen({super.key});
 
@@ -299,20 +309,59 @@ class StatsScreen extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final range = ref.watch(statsRangeProvider);
     final time = ref.watch(timeServiceProvider);
     final dailyGoalMinutes = ref.watch(dailyGoalMinutesProvider);
+    final today = time.todayLocalDate();
 
     final colors = context.colors;
     final tokens = context.tokens;
     final textTheme = Theme.of(context).textTheme;
 
-    final weeks = journeyWeeks(
-      minutesByDate: minutesByDate,
-      periodStart: periodStart,
-      todayLocalDate: time.todayLocalDate(),
-      startOfWeek: time.startOfWeek,
-      dailyGoalMinutes: dailyGoalMinutes,
-    );
+    // The Week range is the calendar week to date — at most a few days old.
+    // Bucketed by week that is one sparse column, which reads as broken rather
+    // than as "it is only Tuesday", so it is drawn a stone per day instead.
+    // Every longer range keeps its weekly buckets.
+    //
+    // Keyed off the range, and anchored on this week's own first day rather
+    // than the bundle's period start: for a frame after the picker moves the
+    // bundle can still be the previous range's, and a stale 30-day start here
+    // would draw a month of daily stones.
+    final daily = range == StatsRange.week;
+    final columns = daily
+        ? [
+            for (final d in journeyDays(
+              minutesByDate: minutesByDate,
+              weekStartLocalDate: time.startOfWeek(today),
+              todayLocalDate: today,
+              dailyGoalMinutes: dailyGoalMinutes,
+            ))
+              _TrailColumn(
+                stones: d.stones,
+                scale: d.scale,
+                opacity: d.opacity,
+                isNow: d.isNow,
+                label: d.isNow ? 'Now' : _weekdayShort(d.date),
+              ),
+          ]
+        : [
+            for (final (i, w) in journeyWeeks(
+              minutesByDate: minutesByDate,
+              periodStart: periodStart,
+              todayLocalDate: today,
+              startOfWeek: time.startOfWeek,
+              dailyGoalMinutes: dailyGoalMinutes,
+            ).indexed)
+              _TrailColumn(
+                stones: w.stones,
+                scale: w.scale,
+                opacity: w.opacity,
+                isNow: w.isNow,
+                label: w.isNow ? 'Now' : 'W${i + 1}',
+              ),
+          ];
+
+    final unit = daily ? 'day' : 'week';
 
     return Container(
       decoration: BoxDecoration(
@@ -324,13 +373,33 @@ class StatsScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CardChrome.sectionLabel(context, 'Your journey'),
+          Row(
+            children: [
+              Expanded(child: CardChrome.sectionLabel(context, 'Your journey')),
+              const SizedBox(width: 8),
+              // What one stone-stack stands for. The trail changes shape when
+              // the range moves between Week and the rest, and this is what
+              // says so, rather than leaving W1–W5 and M–T–W unexplained.
+              Text(
+                'By $unit',
+                style: textTheme.bodySmall?.copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: tokens.textMuted,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 14),
           Semantics(
             container: true,
-            label: 'Your journey: ${weeks.length} '
-                '${weeks.length == 1 ? 'week' : 'weeks'} of focus, oldest '
-                'first, ending with this week.',
+            label: daily
+                ? 'Your journey: ${columns.length} '
+                    '${columns.length == 1 ? 'day' : 'days'} of focus so far '
+                    'this week, oldest first, ending today.'
+                : 'Your journey: ${columns.length} '
+                    '${columns.length == 1 ? 'week' : 'weeks'} of focus, '
+                    'oldest first, ending with this week.',
             excludeSemantics: true,
             child: Stack(
               alignment: Alignment.bottomCenter,
@@ -348,34 +417,34 @@ class StatsScreen extends ConsumerWidget {
                 ),
                 Row(
                   // Right-aligned so "Now" is always the last column, however
-                  // few weeks the range covers.
+                  // few columns the range covers.
                   mainAxisAlignment: MainAxisAlignment.end,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    for (var i = 0; i < weeks.length; i++) ...[
+                    for (var i = 0; i < columns.length; i++) ...[
                       if (i > 0) const SizedBox(width: 6),
                       Expanded(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             CairnGlyph(
-                              stoneCount: weeks[i].stones,
-                              scale: weeks[i].scale,
-                              opacity: weeks[i].opacity,
-                              showMarker: weeks[i].isNow,
+                              stoneCount: columns[i].stones,
+                              scale: columns[i].scale,
+                              opacity: columns[i].opacity,
+                              showMarker: columns[i].isNow,
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              weeks[i].isNow ? 'Now' : 'W${i + 1}',
+                              columns[i].label,
                               maxLines: 1,
                               overflow: TextOverflow.clip,
                               style: textTheme.labelSmall?.copyWith(
                                 fontSize: 9,
                                 letterSpacing: 0,
-                                fontWeight: weeks[i].isNow
+                                fontWeight: columns[i].isNow
                                     ? FontWeight.w800
                                     : FontWeight.w600,
-                                color: weeks[i].isNow
+                                color: columns[i].isNow
                                     ? colors.primary
                                     : tokens.textMuted,
                               ),
@@ -427,9 +496,21 @@ class StatsScreen extends ConsumerWidget {
           // was discoverable before: "Activity" alone reads as though it
           // might be habit check-offs, and the 365-day window is fixed rather
           // than following the range picker directly above it.
-          Text(
-            'Focus minutes · last 365 days',
-            style: textTheme.bodySmall?.copyWith(color: tokens.textMuted),
+          //
+          // The line is accurate but easy to read past, so it is paired with
+          // a badge. A Wrap: at a large font scale the badge drops beneath
+          // the line instead of squeezing it.
+          Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Focus minutes · last 365 days',
+                style: textTheme.bodySmall?.copyWith(color: tokens.textMuted),
+              ),
+              const FixedRangePill(),
+            ],
           ),
           const SizedBox(height: 12),
           heatmapAsync.when(
@@ -625,8 +706,18 @@ class StatsScreen extends ConsumerWidget {
     ));
   }
 
-  // ── 2×2 tile grid ──────────────────────────────────────────────────────────
+  // ── Tiles: two that follow the range, two that never do ───────────────────
 
+  /// Four tiles in two groups, each under its own heading.
+  ///
+  /// They used to be one grid with the two range-independent tiles set
+  /// diagonally from each other, distinguished only by a qualifier word in an
+  /// 11px label and a tooltip. Nothing about the layout said that tapping
+  /// "Week" would move two of them and not the others. Grouping them — the
+  /// pair that follows the picker first, then the pair that reads the same at
+  /// every range — makes the split the first thing seen rather than something
+  /// found by long-pressing. The labels and tooltips stay as they were: the
+  /// heading says which group, the label still says which window.
   Widget _buildTileGrid(BuildContext context, WidgetRef ref) {
     final range = ref.watch(statsRangeProvider);
     final period = ref.watch(statsPeriodProvider);
@@ -644,24 +735,14 @@ class StatsScreen extends ConsumerWidget {
     );
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const RangeScopeHeading.follows(),
+        const SizedBox(height: 8),
         IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: _StatTile(
-                  figure: '$longestStreakDays',
-                  // "ever" in the visible label, not only the tooltip: this
-                  // is the one tile in the grid that ignores the range
-                  // picker, and a tooltip only reaches someone who thinks to
-                  // long-press it.
-                  label: 'best streak ever (days)',
-                  tooltip: 'Your all-time longest streak, not limited to the '
-                      'range above.',
-                ),
-              ),
-              const SizedBox(width: 10),
               Expanded(
                 child: _StatTile(
                   figure: weekdayProfile == null
@@ -674,14 +755,7 @@ class StatsScreen extends ConsumerWidget {
                       'time, not your highest total.',
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+              const SizedBox(width: 10),
               Expanded(
                 child: _StatTile(
                   figure: habitsKeptPerDay(
@@ -690,6 +764,27 @@ class StatsScreen extends ConsumerWidget {
                     habitBundle: habitBundle,
                   ),
                   label: 'habits kept / day',
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        const RangeScopeHeading.fixed(),
+        const SizedBox(height: 8),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _StatTile(
+                  figure: '$longestStreakDays',
+                  // "ever" in the visible label, not only the tooltip: this
+                  // tile ignores the range picker, and a tooltip only reaches
+                  // someone who thinks to long-press it.
+                  label: 'best streak ever (days)',
+                  tooltip: 'Your all-time longest streak, not limited to the '
+                      'range above.',
                 ),
               ),
               const SizedBox(width: 10),
@@ -704,7 +799,7 @@ class StatsScreen extends ConsumerWidget {
                   // (`FreezesChip`), and re-cutting it to the picker here
                   // would make the same word mean two things. Said out loud
                   // so the tile is not read as following the picker.
-                  tooltip: 'Rest days used across your habits this calendar '
+                  tooltip: 'Freezes used across your habits this calendar '
                       'month. Not affected by the range above.',
                 ),
               ),
@@ -772,7 +867,9 @@ class StatsScreen extends ConsumerWidget {
 // Pure helpers — no widgets, so the tile arithmetic can be tested directly
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// One column of the "Your journey" trail.
+/// One column of the "Your journey" trail: a calendar week. Every range but Week
+/// draws these; Week has too few days for a weekly bucket and draws
+/// [JourneyDay]s instead.
 class JourneyWeek {
   const JourneyWeek({
     required this.weekStart,
@@ -811,7 +908,128 @@ const int journeyMaxWeeks = 8;
 const double journeyMinScale = 0.24;
 const double journeyMaxScale = 0.34;
 
-/// The trail's columns, oldest first, for the selected range.
+/// One column of the trail on the Week range: a single day.
+///
+/// The same visual fields as [JourneyWeek], for the same [CairnGlyph]. It is a
+/// separate type only because what it stands for differs — one calendar date
+/// rather than a week beginning on one.
+class JourneyDay {
+  const JourneyDay({
+    required this.date,
+    required this.minutes,
+    required this.stones,
+    required this.scale,
+    required this.opacity,
+    required this.isNow,
+  });
+
+  final String date;
+  final int minutes;
+
+  /// 0–4, what [CairnGlyph] draws.
+  final int stones;
+  final double scale;
+  final double opacity;
+
+  /// The rightmost column — today. Drawn largest, fully opaque, with the marker,
+  /// and labelled "Now".
+  final bool isNow;
+}
+
+/// The size and opacity of the [index]th of [count] trail columns: a ramp from
+/// the smallest, faintest column on the left to full size and full strength on
+/// the right, where "Now" is.
+///
+/// The one place this lives, shared by [journeyWeeks] and [journeyDays]. Two
+/// copies of the ramp would be two chances for the weekly and daily trails to
+/// drift into slightly different visual languages — the trail is one motif, and
+/// only what a column stands for changes between ranges.
+///
+/// A single column is drawn at full trail size rather than at the bottom of the
+/// ramp — there is nothing for it to be smaller than.
+({double scale, double opacity}) _trailRamp(int index, int count) {
+  if (count == 1) return (scale: journeyMaxScale, opacity: 1.0);
+  final t = index / (count - 1);
+  return (
+    scale: journeyMinScale + (journeyMaxScale - journeyMinScale) * t,
+    opacity: 0.4 + 0.6 * t,
+  );
+}
+
+/// The trail's columns for the **Week** range, oldest first: one per day of the
+/// current week so far, ending with today as "Now".
+///
+/// [journeyWeeks] would give this range a single, mostly empty column. The Week
+/// range is the calendar week to date, so on a Tuesday it is two days old and
+/// there is almost nothing to bucket — the trail would technically be right and
+/// look broken. Bucketed by day it is a stone per day so far: one on a Monday,
+/// up to seven by Sunday. (A single column on a Monday is correct, not a bug to
+/// work around; it is drawn at full size, labelled "Now".)
+///
+/// Each day's stone count is its focus minutes against one day of the daily
+/// goal, where a week's is against seven — the same yardstick, the same absolute
+/// scale, at the granularity of the column. The stones, the ramp and the empty
+/// case all go through the helpers [journeyWeeks] uses.
+///
+/// Days after today are not drawn: they have not happened, and an empty stone
+/// would accuse the user of missing them.
+List<JourneyDay> journeyDays({
+  required Map<String, int> minutesByDate,
+  required String weekStartLocalDate,
+  required String todayLocalDate,
+  required int dailyGoalMinutes,
+}) {
+  // At most a week, at least today itself.
+  final count =
+      (TimeService.daysBetween(weekStartLocalDate, todayLocalDate) + 1)
+          .clamp(1, 7);
+
+  return [
+    for (var i = 0; i < count; i++)
+      () {
+        final date = TimeService.addDays(todayLocalDate, -(count - 1 - i));
+        final minutes = minutesByDate[date] ?? 0;
+        final ramp = _trailRamp(i, count);
+        return JourneyDay(
+          date: date,
+          minutes: minutes,
+          stones: _journeyStones(minutes, dailyGoalMinutes),
+          scale: ramp.scale,
+          opacity: ramp.opacity,
+          isNow: i == count - 1,
+        );
+      }(),
+  ];
+}
+
+/// Three-letter weekday for a `YYYY-MM-DD` date, for the daily trail's labels.
+String _weekdayShort(String localDate) {
+  const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return names[TimeService.parseLocalDate(localDate).weekday - 1];
+}
+
+/// What the trail's widget draws for one column, whichever range built it —
+/// so the widget does not need to know whether a column is a week or a day.
+class _TrailColumn {
+  const _TrailColumn({
+    required this.stones,
+    required this.scale,
+    required this.opacity,
+    required this.isNow,
+    required this.label,
+  });
+
+  final int stones;
+  final double scale;
+  final double opacity;
+  final bool isNow;
+  final String label;
+}
+
+/// The trail's columns for every range but Week, oldest first.
+///
+/// (Week has its own, [journeyDays] — its weekly bucket would be a single sparse
+/// column.)
 ///
 /// Weekly buckets come straight off [StatsBundle.minutesByDate] — the days are
 /// already period-limited, so no second query is needed to aggregate them. Each
@@ -876,34 +1094,32 @@ List<JourneyWeek> journeyWeeks({
 
   return [
     for (var i = 0; i < starts.length; i++)
-      JourneyWeek(
-        weekStart: starts[i],
-        minutes: totals[starts[i]]!,
-        stones: _journeyStones(totals[starts[i]]!, dailyGoalMinutes),
-        // A single-column trail is drawn at full trail size rather than at the
-        // bottom of the ramp — there is nothing for it to be smaller than.
-        scale: starts.length == 1
-            ? journeyMaxScale
-            : journeyMinScale +
-                (journeyMaxScale - journeyMinScale) * (i / (starts.length - 1)),
-        opacity: starts.length == 1
-            ? 1.0
-            : 0.4 + 0.6 * (i / (starts.length - 1)),
-        isNow: i == starts.length - 1,
-      ),
+      () {
+        final ramp = _trailRamp(i, starts.length);
+        return JourneyWeek(
+          weekStart: starts[i],
+          minutes: totals[starts[i]]!,
+          // A week's yardstick is seven days of the daily goal.
+          stones: _journeyStones(totals[starts[i]]!, dailyGoalMinutes * 7),
+          scale: ramp.scale,
+          opacity: ramp.opacity,
+          isNow: i == starts.length - 1,
+        );
+      }(),
   ];
 }
 
-/// Stones for one week: its focus minutes against seven days of the daily
-/// goal, capped at the glyph's four.
+/// Stones for one column: its focus minutes against [yardstickMinutes] — what a
+/// full four-stone column is worth, capped at the glyph's four. A week's is
+/// seven days of the daily goal and a day's is one ([journeyWeeks] and
+/// [journeyDays]).
 ///
-/// The guard covers a zero or negative goal as well as an empty week — the
-/// setting is user-configurable, and a divide by zero here would take the whole
-/// screen down.
-int _journeyStones(int minutes, int dailyGoalMinutes) {
-  if (minutes <= 0 || dailyGoalMinutes <= 0) return 0;
-  final weeklyGoalMinutes = dailyGoalMinutes * 7;
-  return (minutes / weeklyGoalMinutes * 4).ceil().clamp(1, 4);
+/// The guard covers a zero or negative yardstick as well as an empty column —
+/// the daily goal is user-configurable, and a divide by zero here would take the
+/// whole screen down.
+int _journeyStones(int minutes, int yardstickMinutes) {
+  if (minutes <= 0 || yardstickMinutes <= 0) return 0;
+  return (minutes / yardstickMinutes * 4).ceil().clamp(1, 4);
 }
 
 /// One heatmap square's tooltip: the day, and what was focused on it.
