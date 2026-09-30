@@ -100,12 +100,24 @@ abstract final class FeatureInfoContent {
             'glasses, thirty pages. It counts as done for the day once you '
             'reach the target.',
       ),
+      // One name for this everywhere: "freeze". The number beside the Habits
+      // title, the day sheet's "Freeze this day" and the habit editor's
+      // stepper are all this one monthly allowance. If the mechanism changes —
+      // in particular if a freeze ever starts applying itself — change this
+      // section in the same edit, because "manual" is the part people get
+      // wrong.
       FeatureInfoSection(
-        heading: 'Rest days',
+        heading: 'Freezes',
         body:
-            'You can allow yourself a number of skips each month. A skipped '
-            'day is a deliberate rest, not a miss, so it does not break your '
-            'streak.',
+            'You can excuse yourself from a set number of days each month '
+            'without breaking your streak. Each habit has its own allowance, '
+            'and the number beside the title is how many freezes you have '
+            'left this month across all of them. This does not happen '
+            'automatically: a missed day stays missed unless you open the '
+            'habit, tap that day in its calendar and choose Freeze this day. '
+            'You can do that for today or for any earlier day it was '
+            'scheduled, not for days still to come. Past the allowance, a '
+            'frozen day counts as missed.',
       ),
       FeatureInfoSection(
         heading: 'Reminders',
@@ -207,7 +219,7 @@ abstract final class FeatureInfoContent {
         body:
             'Counted only on days the habit was scheduled. Days it was not '
             'scheduled are skipped over rather than breaking the chain, and a '
-            'rest day you allowed yourself does not break it either.',
+            'day you froze does not break it either.',
       ),
       FeatureInfoSection(
         heading: 'Why some panels say "provisional"',

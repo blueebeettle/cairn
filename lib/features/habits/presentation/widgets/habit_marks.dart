@@ -9,7 +9,7 @@ import '../../../../theme/app_theme.dart';
 ///
 ///   done     filled
 ///   missed   hollow ring
-///   neutral  dashed ring       (an excused rest day)
+///   neutral  dashed ring       (a frozen day)
 ///   pending  half-filled       (today, not yet met)
 ///   future   nothing           (NEVER drawn as missed)
 ///   null     nothing           (not a scheduled day)

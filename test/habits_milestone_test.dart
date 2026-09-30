@@ -357,6 +357,36 @@ void main() {
         expect(find.text('3 freezes'), findsOneWidget);
       });
 
+      testWidgets(
+          "the chip's tooltip agrees with its label: freezes, and manual",
+          (tester) async {
+        await tester.pumpWidget(
+          screen(buildTheme(), [
+            _snapshot(
+              allowance: 2,
+              scheduledDates: const [_today],
+              outcomes: const {_today: HabitDayOutcome.missed},
+            ),
+          ]),
+        );
+        await tester.pumpAndSettle();
+
+        final tooltip = tester.widget<Tooltip>(find.ancestor(
+          of: find.text('2 freezes'),
+          matching: find.byType(Tooltip),
+        ));
+        final message = tooltip.message!;
+
+        // It used to read "Rest days left this month" under a chip that said
+        // "2 freezes" — two names for one number in the same breath.
+        expect(message, startsWith('Freezes left this month'));
+        expect(message.toLowerCase(), isNot(contains('rest day')));
+        // And it says the thing the number does not: a freeze is not applied
+        // for you.
+        expect(message, contains('Not automatic'));
+        expect(message, contains('calendar'));
+      });
+
       testWidgets('a single remaining freeze is singular', (tester) async {
         await tester.pumpWidget(
           screen(buildTheme(), [

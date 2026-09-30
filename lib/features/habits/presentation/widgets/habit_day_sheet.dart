@@ -8,11 +8,16 @@ import '../../../../theme/app_theme.dart';
 import '../../../reminders/reminder_service.dart';
 import '../../domain/habit_presentation.dart';
 
-/// What the rest-day row says, computed before the user commits.
+/// What the freeze row says, computed before the user commits.
 ///
-/// SPEC §10.3: the UI must show what remains *before* the last rest day is
-/// spent — "2 of 2 rest days used this month — skipping again will reset your
+/// SPEC §10.3: the UI must show what remains *before* the last freeze is
+/// spent — "2 of 2 freezes used this month — freezing again will reset your
 /// streak" — rather than reporting a broken streak afterwards.
+///
+/// The function keeps its old name: it is the internal handle for the
+/// per-habit monthly allowance (`skipAllowancePerMonth`), and only the words
+/// it produces are user-facing. Those say "freeze", the one name the app uses
+/// for this everywhere.
 ({String text, bool warn}) restDayAllowanceText(
   HabitSnapshot snapshot,
   String localDate,
@@ -21,13 +26,14 @@ import '../../domain/habit_presentation.dart';
   final used = snapshot.excusedInMonth(localDate.substring(0, 7));
   if (allowance <= 0) {
     return (
-      text: 'This habit allows no rest days — resting will reset your streak.',
+      text: 'This habit allows no freezes — freezing a day will reset your '
+          'streak.',
       warn: true,
     );
   }
   if (used >= allowance) {
     return (
-      text: '$used of $allowance rest days used this month — skipping again '
+      text: '$used of $allowance freezes used this month — freezing again '
           'will reset your streak.',
       warn: true,
     );
@@ -35,13 +41,13 @@ import '../../domain/habit_presentation.dart';
   final left = allowance - used;
   return (
     text: left == 1
-        ? '1 of $allowance rest days left this month — this is the last one.'
-        : '$left of $allowance rest days left this month.',
+        ? '1 of $allowance freezes left this month — this is the last one.'
+        : '$left of $allowance freezes left this month.',
     warn: false,
   );
 }
 
-/// The sheet for one day of one habit: mark done, mark as rest day, note,
+/// The sheet for one day of one habit: mark done, freeze the day, note,
 /// clear. This is how a missed day gets filled in, and the reason
 /// `HabitsRepository.check` takes a `localDate`.
 Future<void> showHabitDaySheet(
@@ -137,11 +143,13 @@ class _HabitDaySheet extends ConsumerWidget {
             ),
           if (!skipped)
             ListTile(
+              // The snowflake the Habits header chip uses, so the action and
+              // the "N freezes" it spends read as one thing.
               leading: Icon(
-                Icons.bedtime_outlined,
+                Icons.ac_unit_rounded,
                 color: allowance.warn ? tokens.warning : null,
               ),
-              title: const Text('Mark as rest day'),
+              title: const Text('Freeze this day'),
               subtitle: Text(
                 allowance.text,
                 style: allowance.warn
@@ -157,16 +165,16 @@ class _HabitDaySheet extends ConsumerWidget {
                     await repo.setSkipped(habit.id, localDate: localDate);
                 _snack(
                   excused
-                      ? 'Rest day marked. Your streak is safe.'
-                      : 'Rest day marked. This month\'s rest days were '
-                          'already used, so it counts as missed.',
+                      ? 'Day frozen. Your streak is safe.'
+                      : 'Freeze marked, but this month\'s freezes were '
+                          'already used, so the day counts as missed.',
                 );
               }),
             )
           else
             ListTile(
-              leading: const Icon(Icons.bedtime_off_outlined),
-              title: const Text('Remove rest day'),
+              leading: const Icon(Icons.ac_unit_rounded),
+              title: const Text('Remove freeze'),
               onTap: () => _run(context, ref, (repo) async {
                 await repo.setSkipped(habit.id,
                     localDate: localDate, skipped: false);
@@ -194,7 +202,7 @@ class _HabitDaySheet extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.remove_circle_outline_rounded),
               title: const Text('Clear'),
-              subtitle: const Text('Remove check-offs and rest day. Keeps the note.'),
+              subtitle: const Text('Remove check-offs and freeze. Keeps the note.'),
               onTap: () => _run(context, ref, (repo) async {
                 for (var i = 0; i < count; i++) {
                   await repo.uncheck(habit.id, localDate: localDate);

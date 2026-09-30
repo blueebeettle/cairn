@@ -447,7 +447,7 @@ void main() {
     });
   });
 
-  group('Verify 5 — three rest days in one month, allowance 2', () {
+  group('Verify 5 — three freezes in one month, allowance 2', () {
     testWidgets('first two keep the streak, the third resets it, warned first',
         (tester) async {
       _phone(tester, height: 1400);
@@ -478,12 +478,12 @@ void main() {
         await _settle(tester);
         final warning = tester
             .widgetList<Text>(find.descendant(
-              of: find.widgetWithText(ListTile, 'Mark as rest day'),
+              of: find.widgetWithText(ListTile, 'Freeze this day'),
               matching: find.byType(Text),
             ))
             .map((t) => t.data)
-            .firstWhere((s) => s != null && s.contains('rest days'))!;
-        await tester.tap(find.text('Mark as rest day'));
+            .firstWhere((s) => s != null && s.contains('freezes'))!;
+        await tester.tap(find.text('Freeze this day'));
         await _settle(tester);
         final snack = tester
             .widgetList<Text>(find.descendant(
@@ -502,22 +502,22 @@ void main() {
       final r3 = await rest('Wednesday 9 September, done');
 
       expect(start, ['13 day streak']);
-      expect(r1.warning, '2 of 2 rest days left this month.');
+      expect(r1.warning, '2 of 2 freezes left this month.');
       expect(r1.streak, ['13 day streak']);
       expect(r2.warning,
-          '1 of 2 rest days left this month — this is the last one.');
+          '1 of 2 freezes left this month — this is the last one.');
       expect(r2.streak, ['13 day streak']);
       // The warning is on screen BEFORE the third is spent.
       expect(r3.warning,
-          '2 of 2 rest days used this month — skipping again will reset your streak.');
+          '2 of 2 freezes used this month — freezing again will reset your streak.');
       expect(r3.streak, ['4 day streak']);
 
       final labels = _allLabels(tester);
       seen.addAll(labels.where((l) => l.contains('September') &&
-          (l.contains('rest day') || l.contains('missed'))));
+          (l.contains('frozen') || l.contains('missed'))));
       expect(seen, containsAll([
-        'Thursday 3 September, rest day',
-        'Sunday 6 September, rest day',
+        'Thursday 3 September, frozen',
+        'Sunday 6 September, frozen',
         'Wednesday 9 September, missed',
       ]));
 
@@ -525,13 +525,221 @@ void main() {
       final events = await (h.db.select(h.db.events)
             ..where((e) => e.type.equals(EventTypes.habitFreezeUsed)))
           .get();
-      _report('V5 rest days: start=$start');
+      _report('V5 freezes: start=$start');
       _report('V5  #1 Sep 3  warning="${r1.warning}" -> ${r1.streak} snack="${r1.snack}"');
       _report('V5  #2 Sep 6  warning="${r2.warning}" -> ${r2.streak} snack="${r2.snack}"');
       _report('V5  #3 Sep 9  warning="${r3.warning}" -> ${r3.streak} snack="${r3.snack}"');
       _report('V5  cells: $seen; freeze_used events=${events.length}; '
           'longest=${snap.streaks.longest}');
       semantics.dispose();
+    });
+  });
+
+  // One allowance, one name. The Habits header chip says "N freezes", the
+  // habit editor sets the allowance, and the day sheet spends it — they used to
+  // say "freeze" and "rest day" between them, sometimes in one widget.
+  group('Freeze wording — one name for one concept', () {
+    testWidgets(
+        'the day sheet, its snack bars and the calendar legend all say freeze',
+        (tester) async {
+      _phone(tester, height: 1400);
+      final semantics = tester.ensureSemantics();
+      final h = _Harness('2026-09-01');
+      addTearDown(h.db.close);
+
+      final id = await h.repo.createHabit(
+        title: 'Walk',
+        scheduleRule: 'FREQ=DAILY',
+        skipAllowancePerMonth: 1,
+      );
+      await h.completeOn(id, [
+        for (var d = 1; d <= 13; d++) TimeService.formatIsoDate(2026, 9, d),
+      ]);
+      h.setNow('2026-09-14', 10);
+
+      await tester.pumpWidget(_app(h, HabitDetailScreen(habitId: id)));
+      await _settle(tester);
+
+      // The calendar legend names the state "Frozen", not "Rest day".
+      expect(find.text('Frozen'), findsOneWidget);
+      expect(find.text('Rest day'), findsNothing);
+
+      Future<void> openDay(String cellLabel) async {
+        final cell = find.bySemanticsLabel(cellLabel);
+        await tester.ensureVisible(cell);
+        await tester.tap(cell);
+        await _settle(tester);
+      }
+
+      String? snackText() => tester
+          .widgetList<Text>(find.descendant(
+              of: find.byType(SnackBar), matching: find.byType(Text)))
+          .map((t) => t.data)
+          .firstOrNull;
+
+      Future<void> dismissSnack() async {
+        ScaffoldMessenger.of(tester.element(find.byType(HabitDetailScreen)))
+            .removeCurrentSnackBar();
+        await _settle(tester);
+      }
+
+      // Freeze one day: the sheet's action, its allowance line, its snack bar.
+      await openDay('Thursday 3 September, done');
+      expect(find.text('Freeze this day'), findsOneWidget);
+      expect(find.text('Mark as rest day'), findsNothing);
+      const lastOne = '1 of 1 freezes left this month — this is the last one.';
+      // The sheet's own tile carries it...
+      expect(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Freeze this day'),
+          matching: find.text(lastOne),
+        ),
+        findsOneWidget,
+      );
+      // ...and so does the detail screen underneath it, under its stats.
+      expect(find.text(lastOne), findsNWidgets(2));
+      await tester.tap(find.text('Freeze this day'));
+      await _settle(tester);
+      expect(snackText(), 'Day frozen. Your streak is safe.');
+      await dismissSnack();
+
+      // The day now announces itself as frozen, and offers to undo it.
+      await openDay('Thursday 3 September, frozen');
+      expect(find.text('Remove freeze'), findsOneWidget);
+      expect(find.text('Freeze this day'), findsNothing);
+      expect(find.text('Remove rest day'), findsNothing);
+      // Clear names the same thing it removes.
+      expect(find.text('Remove check-offs and freeze. Keeps the note.'),
+          findsOneWidget);
+      await tester.tap(find.text('Remove freeze'));
+      await _settle(tester);
+      expect(find.bySemanticsLabel('Thursday 3 September, frozen'),
+          findsNothing);
+
+      // Freeze two days against an allowance of one: the second is warned
+      // about first, then told plainly it counts as missed.
+      await openDay('Sunday 6 September, done');
+      await tester.tap(find.text('Freeze this day'));
+      await _settle(tester);
+      await dismissSnack();
+
+      await openDay('Wednesday 9 September, done');
+      expect(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Freeze this day'),
+          matching: find.text('1 of 1 freezes used this month — freezing '
+              'again will reset your streak.'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Freeze this day'));
+      await _settle(tester);
+      expect(
+        snackText(),
+        'Freeze marked, but this month\'s freezes were already used, so the '
+        'day counts as missed.',
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('an allowance of 0 says no freezes are allowed', (tester) async {
+      _phone(tester, height: 1400);
+      final semantics = tester.ensureSemantics();
+      final h = _Harness('2026-09-01');
+      addTearDown(h.db.close);
+
+      final id = await h.repo.createHabit(
+        title: 'Walk',
+        scheduleRule: 'FREQ=DAILY',
+        skipAllowancePerMonth: 0,
+      );
+      await h.completeOn(id, [
+        for (var d = 1; d <= 5; d++) TimeService.formatIsoDate(2026, 9, d),
+      ]);
+      h.setNow('2026-09-06', 10);
+
+      await tester.pumpWidget(_app(h, HabitDetailScreen(habitId: id)));
+      await _settle(tester);
+
+      final cell = find.bySemanticsLabel('Wednesday 2 September, done');
+      await tester.ensureVisible(cell);
+      await tester.tap(cell);
+      await _settle(tester);
+
+      const none = 'This habit allows no freezes — freezing a day will reset '
+          'your streak.';
+      expect(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Freeze this day'),
+          matching: find.text(none),
+        ),
+        findsOneWidget,
+      );
+      // The detail screen prints the same line under its stats.
+      expect(find.text(none), findsNWidgets(2));
+      semantics.dispose();
+    });
+
+    testWidgets('the habit editor calls the allowance Freezes and says it is manual',
+        (tester) async {
+      _phone(tester);
+      final h = _Harness('2026-09-14');
+      addTearDown(h.db.close);
+
+      await tester.pumpWidget(_app(
+        h,
+        Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => HabitEditSheet.show(context),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await _settle(tester);
+
+      final list = find.descendant(
+          of: find.byType(HabitEditSheet), matching: find.byType(Scrollable));
+      await tester.scrollUntilVisible(find.text('FREEZES'), 200,
+          scrollable: list.first);
+      await _settle(tester);
+
+      expect(find.text('FREEZES'), findsOneWidget);
+      expect(find.text('REST DAYS'), findsNothing);
+      expect(
+        find.text('Allow 2 freezes a month without breaking your streak'),
+        findsOneWidget,
+      );
+      // The honest part: it never applies itself.
+      expect(find.textContaining('never applied automatically'), findsOneWidget);
+
+      // Singular at one, and the zero case still reads as a sentence.
+      await tester.tap(find.byTooltip('Fewer'));
+      await _settle(tester);
+      expect(
+        find.text('Allow 1 freeze a month without breaking your streak'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byTooltip('Fewer'));
+      await _settle(tester);
+      expect(
+        find.text('Allow 0 freezes a month without breaking your streak'),
+        findsOneWidget,
+      );
+
+      // And nothing on the sheet still speaks of rest days.
+      expect(
+        find.textContaining(RegExp('rest days?', caseSensitive: false)),
+        findsNothing,
+      );
+    });
+
+    test('a frozen day is read out as frozen, not as a rest day', () {
+      expect(HabitOutcomeText.of(HabitDayOutcome.neutral), 'frozen');
+      expect(HabitOutcomeText.cell('2026-09-03', HabitDayOutcome.neutral),
+          'Thursday 3 September, frozen');
     });
   });
 
@@ -964,7 +1172,7 @@ void main() {
       });
     });
 
-    testWidgets('Day sheet with the rest-day warning', (tester) async {
+    testWidgets('Day sheet with the freeze warning', (tester) async {
       _phone(tester);
       final h = await seeded();
       addTearDown(h.db.close);
@@ -978,7 +1186,7 @@ void main() {
         await tester.ensureVisible(cell);
         await tester.tap(cell);
         await _settle(tester);
-        expect(find.text('Mark as rest day'), findsOneWidget);
+        expect(find.text('Freeze this day'), findsOneWidget);
       });
     });
 
@@ -1197,7 +1405,7 @@ void main() {
       expect(await h.db.select(h.db.habitEntries).get(), isEmpty);
     });
 
-    test('rest-day allowance text warns before the last one is spent', () async {
+    test('freeze allowance text warns before the last one is spent', () async {
       final h = _Harness('2026-09-01');
       addTearDown(h.db.close);
       final id = await h.repo.createHabit(
@@ -1205,12 +1413,12 @@ void main() {
       h.setNow('2026-09-05');
       var snap = (await h.repo.loadSnapshot(id))!;
       expect(restDayAllowanceText(snap, '2026-09-02').text,
-          '1 of 1 rest days left this month — this is the last one.');
+          '1 of 1 freezes left this month — this is the last one.');
       await h.repo.setSkipped(id, localDate: '2026-09-02');
       snap = (await h.repo.loadSnapshot(id))!;
       final t = restDayAllowanceText(snap, '2026-09-03');
       expect(t.warn, isTrue);
-      expect(t.text, contains('skipping again will reset your streak'));
+      expect(t.text, contains('freezing again will reset your streak'));
     });
 
     test('multi-count habit cycles 0 -> 1 -> 2 -> 3 -> 0 on tap', () async {

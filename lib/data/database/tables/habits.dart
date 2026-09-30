@@ -40,7 +40,7 @@ class Habits extends Table {
   /// What the target is counted in — "pages", "glasses". Null for yes/no.
   TextColumn get unitLabel => text().nullable()();
 
-  /// Rest days a calendar month excuses without breaking the streak (§10.3).
+  /// Freezes a calendar month excuses without breaking the streak (§10.3).
   IntColumn get skipAllowancePerMonth =>
       integer().withDefault(const Constant(2))();
 

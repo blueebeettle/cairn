@@ -376,7 +376,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                         title: const Text('Habit check-in'),
                         subtitle: const Text(
                           'One nudge a day about your habits — your streak, a new '
-                          'week, or a rest day that saved it',
+                          'week, or a freeze that saved it',
                         ),
                         value: habitDigestEnabled,
                         onChanged: (val) {

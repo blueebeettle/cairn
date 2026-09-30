@@ -18,7 +18,7 @@ class HabitDayRecord {
   /// How many times the habit was checked off that logical day.
   final int count;
 
-  /// Whether the user explicitly marked the day as a rest day.
+  /// Whether the user explicitly froze the day.
   final bool skipped;
 }
 
@@ -27,10 +27,11 @@ enum HabitDayOutcome {
   /// Target met. Extends the streak.
   done,
 
-  /// Excused — an explicit rest day inside the monthly allowance.
+  /// Excused — a freeze the user applied by hand, inside the monthly
+  /// allowance. Nothing applies one automatically.
   ///
-  /// Counts toward the STREAK exactly like [done] — using a rest day never
-  /// costs you the number, the same way a Duolingo freeze does not. It is
+  /// Counts toward the STREAK exactly like [done] — using a freeze never
+  /// costs you the number, which is what a freeze is for. It is
   /// still excluded from RATES: a rate answers "how often did you actually do
   /// it", and a protected day you did not do is honestly reported there even
   /// though it is protected in the streak.
@@ -79,7 +80,7 @@ abstract final class HabitStats {
   /// passing them in here is what makes a Mon/Wed/Fri habit look broken every
   /// Tuesday.
   ///
-  /// [skipAllowancePerMonth] is how many rest days a calendar month excuses.
+  /// [skipAllowancePerMonth] is how many freezes a calendar month excuses.
   /// Skips are ranked by date, so the first N skips in a month are excused and
   /// any beyond that count as misses. Bounding it is the point: an unlimited
   /// skip lets someone hold a 200-day streak while doing nothing, which makes
@@ -94,7 +95,7 @@ abstract final class HabitStats {
     final target = targetCount < 1 ? 1 : targetCount;
 
     // Rank skips within their calendar month, in date order. Only skips on
-    // scheduled days consume allowance — a rest day on a day you were never
+    // scheduled days consume allowance — a freeze on a day you were never
     // due does not spend anything.
     final excused = <String>{};
     final usedPerMonth = <String, int>{};
@@ -154,7 +155,7 @@ abstract final class HabitStats {
       skipAllowancePerMonth: skipAllowancePerMonth,
     );
 
-    // `neutral` counts the same as `done` here — a protected rest day costs
+    // `neutral` counts the same as `done` here — a freeze costs
     // nothing off the number, matching what "protects your streak" means to
     // a user. `pending` and `future` are unresolved, not protected: they are
     // stepped over without adding or resetting.
@@ -195,7 +196,7 @@ abstract final class HabitStats {
 
   /// Share of scheduled days in a window that were met.
   ///
-  /// Excused rest days and today-if-pending are removed from the denominator,
+  /// Frozen days and today-if-pending are removed from the denominator,
   /// not counted as failures. Returns null when nothing remains to divide by —
   /// a Mon/Wed/Fri habit asked about a weekend, or a window before the habit
   /// existed. Render that as an em dash.
@@ -249,9 +250,9 @@ abstract final class HabitStats {
     };
   }
 
-  /// How many rest days have been excused in [yearMonth] (`YYYY-MM`).
+  /// How many freezes have been applied in [yearMonth] (`YYYY-MM`).
   ///
-  /// The UI needs this to say "2 of 2 rest days used this month" *before* the
+  /// The UI needs this to say "2 of 2 freezes used this month" *before* the
   /// user spends the last one, rather than reporting a broken streak after.
   static int excusedSkipsInMonth({
     required List<String> scheduledDates,

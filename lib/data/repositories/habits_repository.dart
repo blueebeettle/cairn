@@ -47,7 +47,7 @@ class HabitSnapshot {
   /// Check-offs recorded today, for "3 of 8 glasses".
   int get countToday => entries[todayLocalDate]?.count ?? 0;
 
-  /// Rest days already excused this calendar month.
+  /// Freezes already used this calendar month.
   int get excusedThisMonth => HabitStats.excusedSkipsInMonth(
         scheduledDates: scheduledDates,
         outcomes: streaks.outcomes,
@@ -326,8 +326,8 @@ class HabitsRepository {
         date: date,
         existing: existing,
         checkCount: next,
-        // Checking a day off clears an earlier rest-day mark: you cannot both
-        // rest and do it.
+        // Checking a day off clears an earlier freeze: you cannot both
+        // freeze a day and do it.
         skipped: false,
         lastCheckedAt: now,
       );
@@ -389,14 +389,14 @@ class HabitsRepository {
     });
   }
 
-  /// Marks [localDate] a deliberate rest day.
+  /// Freezes [localDate], deliberately.
   ///
   /// Writes `habit_skipped` always, and `habit_freeze_used` **in addition**
   /// when the skip lands inside the month's allowance and therefore protects
   /// the streak. Two facts, two events — what the user did, and what it cost.
   ///
   /// Returns true when the streak is protected, so the caller can say
-  /// "2 of 2 rest days used this month" instead of reporting a broken streak
+  /// "2 of 2 freezes used this month" instead of reporting a broken streak
   /// after the fact.
   Future<bool> setSkipped(
     String habitId, {
@@ -419,7 +419,7 @@ class HabitsRepository {
         habitId: habitId,
         date: date,
         existing: existing,
-        // A rest day is not a partial day. Clearing the count keeps
+        // A frozen day is not a partial day. Clearing the count keeps
         // "skipped" and "did some of it" from both being true at once.
         checkCount: skipped ? 0 : (existing?.checkCount ?? 0),
         skipped: skipped,

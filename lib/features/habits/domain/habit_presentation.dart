@@ -160,7 +160,7 @@ abstract final class HabitDates {
 
   /// "Freeze used yesterday — streak safe".
   ///
-  /// Deliberately not phrased as a miss: the rest day was inside the monthly
+  /// Deliberately not phrased as a miss: the freeze was inside the monthly
   /// allowance, the streak is intact, and a row that looks like a failure is
   /// the thing the allowance exists to prevent.
   static String freezeUsedLabel(String localDate, String today) {
@@ -256,7 +256,7 @@ abstract final class HabitOutcomeText {
   static String of(HabitDayOutcome? outcome) => switch (outcome) {
         HabitDayOutcome.done => 'done',
         HabitDayOutcome.missed => 'missed',
-        HabitDayOutcome.neutral => 'rest day',
+        HabitDayOutcome.neutral => 'frozen',
         HabitDayOutcome.pending => 'not done yet',
         HabitDayOutcome.future => 'upcoming',
         null => 'not scheduled',
@@ -287,7 +287,7 @@ extension HabitSnapshotViews on HabitSnapshot {
 
   HabitDayOutcome? outcomeOn(String localDate) => streaks.outcomes[localDate];
 
-  /// Rest days already excused in [yearMonth] (`YYYY-MM`).
+  /// Freezes already used in [yearMonth] (`YYYY-MM`).
   int excusedInMonth(String yearMonth) => HabitStats.excusedSkipsInMonth(
         scheduledDates: scheduledDates,
         outcomes: streaks.outcomes,
@@ -321,12 +321,12 @@ extension HabitSnapshotViews on HabitSnapshot {
   int? get milestoneToday =>
       MilestoneThresholds.reached(streaks.current) ? streaks.current : null;
 
-  /// The most recent *settled* scheduled day, when it resolved to an excused
-  /// rest day rather than a miss.
+  /// The most recent *settled* scheduled day, when it resolved to a freeze
+  /// rather than a miss.
   ///
   /// Today is skipped: an unchecked habit resolves to `missed` all day, so
   /// reading today would hide yesterday's freeze behind a miss that has not
-  /// happened yet. A rest day marked for today needs no forgiveness line
+  /// happened yet. A freeze applied to today needs no forgiveness line
   /// either — the list already files it under "done today".
   ///
   /// Only the latest settled day counts: a freeze three weeks back is

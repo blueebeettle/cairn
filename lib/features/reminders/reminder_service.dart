@@ -535,7 +535,7 @@ class ReminderService {
   /// strictly after [now].
   ///
   /// Today qualifies only while it is still pending — a habit already done,
-  /// or marked as a rest day, is skipped to its next scheduled day. Any fire
+  /// or frozen, is skipped to its next scheduled day. Any fire
   /// time not after [now] steps on to the following scheduled day, so this
   /// never returns the past.
   ///

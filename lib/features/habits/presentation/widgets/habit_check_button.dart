@@ -104,7 +104,7 @@ class HabitCheckButton extends ConsumerWidget {
         ),
       );
     } else {
-      // Hollow ring; dashed when today is a marked rest day.
+      // Hollow ring; dashed when today is frozen.
       face = CustomPaint(
         painter: HabitDayMarkPainter(
           outcome: resting ? HabitDayOutcome.neutral : HabitDayOutcome.missed,

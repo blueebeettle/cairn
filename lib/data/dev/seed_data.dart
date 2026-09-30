@@ -881,7 +881,7 @@ class SeedData {
             isCompleted = true;
             checkCount = spec.targetCount;
           } else if (daysFromToday == 2 || daysFromToday == 4) {
-            // Days 2 & 4: excused rest days (freeze used) in the current month.
+            // Days 2 & 4: excused days (freeze used) in the current month.
             // These protect & extend the streak, while allowing the momentum strip
             // to show non-completed days.
             isSkipped = true;
@@ -921,7 +921,7 @@ class SeedData {
           }
         } else if (daysFromToday == 2 || daysFromToday == 4) {
           // Days 2 and 4 ago: forced non-completion across all habits.
-          // Combined with Meditation's rest days, this guarantees at least 1-2 days
+          // Combined with Meditation's freezes, this guarantees at least 1-2 days
           // in the current week show as NOT completed on Today's momentum strip.
           if (spec.targetCount > 1 && _rng.nextDouble() < 0.60) {
             // Count habit gets partial count (e.g. 2-7 glasses), which is still a miss

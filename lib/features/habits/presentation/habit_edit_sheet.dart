@@ -572,20 +572,22 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                   ),
                 const SizedBox(height: 20),
 
-                // ── Rest days ─────────────────────────────────────────────
-                _SectionLabel('Rest days'),
+                // ── Freezes ───────────────────────────────────────────────
+                // `_restDays` is the monthly allowance (`skipAllowancePerMonth`);
+                // only the words on screen say "freeze".
+                _SectionLabel('Freezes'),
                 _Stepper(
-                  label: 'Allow $_restDays rest '
-                      '${_restDays == 1 ? 'day' : 'days'} a month without '
-                      'breaking your streak',
+                  label: 'Allow $_restDays '
+                      '${_restDays == 1 ? 'freeze' : 'freezes'} a month '
+                      'without breaking your streak',
                   value: _restDays,
                   min: 0,
                   max: 5,
                   onChanged: (v) => setState(() => _restDays = v),
                 ),
                 Text(
-                  'A rest day you mark yourself keeps your streak. Past this '
-                  'many in a month, it resets.',
+                  'A freeze you apply yourself keeps your streak — it is never '
+                  'applied automatically. Past this many in a month, it resets.',
                   style: textTheme.bodySmall?.copyWith(color: tokens.textMuted),
                 ),
                 if (_saving)

@@ -1153,6 +1153,19 @@ void main() {
           matching: find.byType(SwitchListTile),
         );
 
+    testWidgets('the Habit check-in row calls a saved streak a freeze',
+        (tester) async {
+      await pumpSettingsAtHabitRow(tester);
+
+      // The digest's own copy already says "freeze used"; the row that
+      // advertises it must use the same word rather than "rest day".
+      expect(find.textContaining('a freeze that saved it'), findsOneWidget);
+      expect(
+        find.textContaining(RegExp('rest days?', caseSensitive: false)),
+        findsNothing,
+      );
+    });
+
     testWidgets('Habit check-in is off by default and hides its time picker',
         (tester) async {
       await pumpSettingsAtHabitRow(tester);

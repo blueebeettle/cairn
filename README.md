@@ -62,8 +62,8 @@ Most productivity tools suffer from brittle data models, midnight streak resets 
   - Interval (Every N days)
   - Monthly (On the Nth day)
 - **Target Counter Habits:** Track habits requiring multiple daily check-offs (e.g., "8 glasses of water").
-- **Streak Shield & Rest Days:** Configure monthly rest day allowances (1–5 days) without breaking your active streak.
-- **Interactive Calendar Heatmap:** Year-long grid of daily completions, rest days, and missed dates with reflective notes.
+- **Streak Freezes:** Configure a monthly freeze allowance (1–5 per habit) and apply a freeze to a day yourself — from the habit's calendar — without breaking your active streak. Freezes are never applied automatically.
+- **Interactive Calendar Heatmap:** Year-long grid of daily completions, frozen days, and missed dates with reflective notes.
 - **Flexible View Modes:** Switch between grouped, regular, and compact grid views.
 
 ### 📊 4. Honest Statistics & Analytics

@@ -194,7 +194,7 @@ class _HabitMonthGridState extends ConsumerState<HabitMonthGrid> {
                 for (final (outcome, label) in const [
                   (HabitDayOutcome.done, 'Done'),
                   (HabitDayOutcome.missed, 'Missed'),
-                  (HabitDayOutcome.neutral, 'Rest day'),
+                  (HabitDayOutcome.neutral, 'Frozen'),
                   (HabitDayOutcome.pending, 'Today'),
                 ])
                   Row(

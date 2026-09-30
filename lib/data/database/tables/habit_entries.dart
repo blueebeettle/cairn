@@ -28,7 +28,7 @@ class HabitEntries extends Table {
   /// `habits.target_count` to decide whether the day is complete.
   IntColumn get checkCount => integer().withDefault(const Constant(0))();
 
-  /// The user deliberately marked this a rest day.
+  /// The user deliberately froze this day.
   ///
   /// Distinct from a miss, and distinct from being excused: whether the skip
   /// protects the streak depends on the month's remaining allowance, which the

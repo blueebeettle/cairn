@@ -134,7 +134,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
       if (!s.isScheduledToday) {
         notToday.add(s);
       } else if (s.isDoneToday || s.todayOutcome == HabitDayOutcome.neutral) {
-        // A rest day marked today is finished business too.
+        // A freeze applied today is finished business too.
         finished.add(s);
       } else {
         due.add(s);

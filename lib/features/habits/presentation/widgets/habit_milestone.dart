@@ -43,7 +43,7 @@ abstract final class MilestoneChrome {
       BorderSide(color: accent(context), width: 2);
 }
 
-/// Rest days still available this month for one habit.
+/// Freezes still available this month for one habit.
 ///
 /// `skipAllowancePerMonth - excusedThisMonth`, floored at zero. The single
 /// place this subtraction happens — [FreezesChip] on the Habits list sums it
@@ -116,8 +116,12 @@ class MilestoneStreakPill extends StatelessWidget {
 
 /// The "N freezes" pill beside the Habits title.
 ///
-/// Counts rest days still available this month — `skipAllowancePerMonth`
+/// Counts freezes still available this month — `skipAllowancePerMonth`
 /// minus what has been excused — summed across the habits in view.
+///
+/// A freeze is spent by hand: nothing in the app applies one to a missed day
+/// on its own. The tooltip says so, because "4 freezes" beside a streak
+/// reads, to anyone who has used a habit app before, as automatic protection.
 class FreezesChip extends StatelessWidget {
   const FreezesChip({super.key, required this.remaining});
 
@@ -130,7 +134,8 @@ class FreezesChip extends StatelessWidget {
     final label = '$remaining ${remaining == 1 ? 'freeze' : 'freezes'}';
 
     return Tooltip(
-      message: 'Rest days left this month across your habits',
+      message: 'Freezes left this month across your habits. Not automatic — '
+          'open a day in a habit\'s calendar to use one.',
       child: Semantics(
         label: '$label left this month',
         excludeSemantics: true,
