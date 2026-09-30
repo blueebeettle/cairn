@@ -13,6 +13,7 @@ import 'app.dart';
 import 'core/time/time_service.dart';
 import 'data/database/app_database.dart';
 import 'data/providers/database_provider.dart';
+import 'data/providers/onboarding_providers.dart';
 import 'data/repositories/settings_repository.dart';
 import 'features/backup/domain/supabase_backup_service.dart';
 import 'features/reminders/reminder_service.dart';
@@ -98,6 +99,14 @@ void main() async {
   final deviceId = bootstrap.deviceId;
   final dayStartOffset = bootstrap.dayStartOffset;
 
+  // The first-run tutorial's flag. Deliberately its own read *after*
+  // runStartupBootstrap rather than a fifth entry in its Future.wait: the
+  // bootstrap's steps and timing are left exactly as the startup
+  // parallelisation made them, and this is a separate decision about which
+  // root to show. One indexed lookup on a database the bootstrap already
+  // opened.
+  final onboardingCompleted = await loadOnboardingCompleted(settingsRepo);
+
   final timeService = TimeService(
     dayStartOffsetMinutes: dayStartOffset,
     tzIdProvider: tzId.isEmpty ? null : () => tzId,
@@ -126,6 +135,7 @@ void main() async {
       deviceIdProvider.overrideWithValue(deviceId),
       deviceTzIdProvider.overrideWithValue(tzId),
       reminderServiceProvider.overrideWithValue(reminderService),
+      initialOnboardingCompletedProvider.overrideWithValue(onboardingCompleted),
     ],
   );
 

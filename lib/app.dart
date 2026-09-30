@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/providers/database_provider.dart';
-import 'features/navigation/presentation/navigation_shell.dart';
+import 'features/onboarding/presentation/onboarding_gate.dart';
 import 'theme/app_theme.dart';
 
 /// Focus Stack main application widget.
 ///
 /// Wires [AppTheme.light] and [AppTheme.dark] into MaterialApp,
-/// responds to [themeModeProvider], and mounts [NavigationShell].
+/// responds to [themeModeProvider], and mounts [OnboardingGate] — the
+/// first-run tutorial on a fresh install, `NavigationShell` from then on.
 class FocusStackApp extends ConsumerWidget {
   const FocusStackApp({super.key});
 
@@ -22,7 +23,7 @@ class FocusStackApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
-      home: const NavigationShell(),
+      home: const OnboardingGate(),
     );
   }
 }
