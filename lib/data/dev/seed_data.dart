@@ -11,35 +11,33 @@ import '../../core/time/time_service.dart';
 import '../database/app_database.dart';
 import '../repositories/settings_repository.dart';
 
-/// Development-only data generator — POLISH.md §8.
+/// Development-only data generator (POLISH.md §8): seed a test database with
+/// 10,000 events and 1,000 tasks, because query cost has to be measured against
+/// that, not against 50 rows.
 ///
-/// *"Seed a test database with 10,000 events and 1,000 tasks. Everything below
-/// is measured against that, not against your 50 rows."*
+/// It serves two purposes:
 ///
-/// Two things this is for, and it is worth being clear that they are different:
+/// **Measuring.** The event log grows forever by design (SPEC §0), so query
+/// cost must be measured rather than assumed. Every query is instant at fifty
+/// rows, including the ones that will be unusable at fifty thousand.
 ///
-/// **Measuring.** The event log grows forever by design (SPEC §0). That is the
-/// right call, and it means query cost has to be measured rather than assumed.
-/// Fifty rows will tell you nothing — every query is instant at fifty rows,
-/// including the ones that will be unusable at fifty thousand.
+/// **Seeing.** Until there are ten completed sessions the peak window won't
+/// display (§4.4), and until there are fourteen non-zero days the heatmap runs
+/// on provisional thresholds (§4.13). A real history is the only way to judge
+/// those features.
 ///
-/// **Seeing.** Until there are ten completed sessions the peak window will not
-/// display at all (§4.4), and until there are fourteen non-zero days the
-/// heatmap runs on provisional fixed thresholds (§4.13). A real history is the
-/// only way to look at those features and judge whether they are any good.
-///
-/// The default span is two years, deliberately longer than the heatmap's
-/// trailing-365 window, so the window has history *outside* it to ignore. A
-/// query that quietly scans everything looks identical to a correct one until
-/// there is data it is supposed to leave alone.
+/// The default span is two years, longer than the heatmap's trailing-365
+/// window, so the window has history *outside* it to ignore: a query that
+/// quietly scans everything looks identical to a correct one until there is
+/// data it should leave alone.
 ///
 /// ## This is not a demo mode
 ///
-/// Every row it writes is indistinguishable from a real one. There is no flag
-/// that says "seeded". That is on purpose — a flag would let queries skip this
-/// data, and then the measurement would be of a query that is not the one that
-/// ships. It also means **this must never be reachable from the normal UI**,
-/// only from the developer screen, and [wipe] must sit next to it.
+/// Every row it writes is indistinguishable from a real one, with no "seeded"
+/// flag: a flag would let queries skip this data, and the measurement would be
+/// of a query that isn't the one that ships. So **this must never be reachable
+/// from the normal UI**, only from the developer screen, and [wipe] must sit
+/// next to it.
 class SeedData {
   SeedData({
     required AppDatabase db,
@@ -252,8 +250,7 @@ class SeedData {
 
   /// A working shape rather than a flat distribution: a morning block, an
   /// afternoon one, and a thinner evening tail. §4.4 has nothing to find in
-  /// uniform noise, and a peak-window chart tested against uniform noise tells
-  /// you nothing about whether it works.
+  /// uniform noise.
   int _pickHour({required bool isWeekend, required int index}) {
     final r = _rng.nextDouble();
     if (isWeekend) {
@@ -308,9 +305,9 @@ class SeedData {
           : projectIds[_rng.nextInt(projectIds.length)];
     }
 
-    // Roughly one session in twelve is open-ended (SPEC §3.1 flow mode), which
-    // has no planned duration at all. Worth generating: a planned_duration_s of
-    // 0 is exactly the value that breaks a naive progress calculation.
+    // Roughly one session in twelve is open-ended (SPEC §3.1 flow mode) with no
+    // planned duration. Worth generating: a planned_duration_s of 0 is the
+    // value that breaks a naive progress calculation.
     final isFlow = _rng.nextDouble() < 0.08;
     final plannedS =
         isFlow ? 0 : const [1500, 1500, 1500, 3000, 900][_rng.nextInt(5)];
@@ -535,12 +532,11 @@ class SeedData {
         final completedLocalDate =
             completedAt == null ? null : _time.computeLocalDate(completedAt);
 
-        // Due dates matter more than they look. The Today and Upcoming views
-        // both filter on `due_at IS NOT NULL`, and the Inbox is defined as
-        // `due_at IS NULL` — so a generator that never sets one puts every
-        // task it makes in the Inbox and leaves the other two screens empty no
-        // matter how much data exists. §4.14 ("every task due that day was
-        // completed") is also uncomputable without them.
+        // Due dates matter more than they look: the Today and Upcoming views
+        // filter on `due_at IS NOT NULL` and the Inbox is `due_at IS NULL`, so
+        // a generator that never sets one puts every task in the Inbox and
+        // leaves the other two screens empty. §4.14 ("every task due that day
+        // was completed") is also uncomputable without them.
         final int? dueDayOffset;
         if (isDone) {
           // Finished work was usually due around when it got done, a couple of
@@ -549,11 +545,11 @@ class SeedData {
         } else if (_rng.nextDouble() < 0.6) {
           final live = _rng.nextDouble();
           dueDayOffset = _rng.nextDouble() < 0.55
-              // A live window around today: this is what gives Today and
-              // Upcoming something to show, and what makes overdue items exist.
-              // Today itself gets an explicit share — spread evenly across a
-              // 29-day window it would land on today about three times in a
-              // thousand, and "due today" is the case most worth looking at.
+              // A live window around today, which gives Today and Upcoming
+              // something to show and makes overdue items exist. Today gets an
+              // explicit share: spread evenly across a 29-day window it would
+              // land on today about three times in a thousand, and "due today"
+              // is the case most worth looking at.
               ? (live < 0.15 ? days - 1 : days - 15 + _rng.nextInt(29))
               // Or a long-overdue backlog, which is what §4.11 (task age) and
               // §4.12 (procrastination) are there to surface.
@@ -614,14 +610,14 @@ class SeedData {
         ));
 
         // SPEC §0: the module tables are a read model derived from events. A
-        // reschedule_count sitting in `tasks` with nothing in the log behind it
-        // is state the event log cannot reproduce — it would silently vanish
-        // the first time anything rebuilt the tables from events, which import
-        // (POLISH §9.1) will do. So the moves are written out.
+        // reschedule_count in `tasks` with nothing in the log behind it is
+        // state the log can't reproduce, and it would vanish the first time
+        // something rebuilt the tables from events (as import, POLISH §9.1,
+        // will). So the moves are written out.
         //
         // §4.12 counts only reschedules that push a task LATER, so the chain is
-        // reconstructed backwards from the final due date and then emitted
-        // forwards, every step moving later.
+        // reconstructed backwards from the final due date and emitted forwards,
+        // every step moving later.
         if (rescheduleCount > 0 && dueAt != null) {
           final chain = <int>[dueAt];
           for (var r = 0; r < rescheduleCount; r++) {
@@ -1096,12 +1092,10 @@ class SeedData {
   }
 
   /// The UTC instant at which the local clock reads these fields on [date].
-  ///
-  /// Built by converting a naive local wall clock through the device's own
-  /// offset at roughly that moment, then correcting once if the first guess
-  /// landed on the wrong side of a DST change. Two passes is enough: offsets
-  /// shift by an hour, and the second guess is computed from the offset that
-  /// actually applies near the target.
+  /// Converts a naive local wall clock through the device's offset at roughly
+  /// that moment, then corrects once if the first guess landed on the wrong
+  /// side of a DST change. Two passes suffice: offsets shift by an hour, and
+  /// the second guess uses the offset that applies near the target.
   int _instantFor(DateTime date, int hour, int minute) {
     final naiveUtc = DateTime.utc(
       date.year,
@@ -1144,14 +1138,13 @@ class SeedData {
     );
   }
 
-  /// Deletes everything this generator writes, and everything else.
+  /// Deletes everything this generator writes, and everything else. Sits beside
+  /// [generate] on purpose: a seeder without a one-tap way back is one nobody
+  /// dares run twice.
   ///
-  /// Sits beside [generate] on purpose. A seeder without a one-tap way back is
-  /// a seeder nobody dares run twice.
-  ///
-  /// `settings` is left alone so the device id, theme, daily goal, and
-  /// reminder configurations survive — losing those makes the app look broken
-  /// rather than empty.
+  /// `settings` is left alone so the device id, theme, daily goal and reminder
+  /// configuration survive; losing those makes the app look broken rather than
+  /// empty.
   Future<void> wipe() async {
     await _db.transaction(() async {
       await _db.delete(_db.events).go();
