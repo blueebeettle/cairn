@@ -17,22 +17,20 @@ class HabitEntries extends Table {
   /// The habit this belongs to.
   TextColumn get habitId => text()();
 
-  /// Logical date (YYYY-MM-DD) per SPEC.md §1.2, computed once at write time.
-  ///
-  /// Computed at write time, never at read time, so a check-off made at 02:00
-  /// with a 04:00 day start stays on the day the user believes they did it —
-  /// including after they fly somewhere else.
+  /// Logical date (YYYY-MM-DD) per SPEC.md §1.2, computed once at write time
+  /// and never at read time, so a check-off at 02:00 with a 04:00 day start
+  /// stays on the day the user believes they did it, including after they fly
+  /// somewhere else.
   TextColumn get localDate => text()();
 
   /// How many times it was checked off that day. Compared against
   /// `habits.target_count` to decide whether the day is complete.
   IntColumn get checkCount => integer().withDefault(const Constant(0))();
 
-  /// The user deliberately froze this day.
-  ///
-  /// Distinct from a miss, and distinct from being excused: whether the skip
-  /// protects the streak depends on the month's remaining allowance, which the
-  /// streak engine resolves. This column records only what the user did.
+  /// The user deliberately froze this day. Distinct from a miss and from being
+  /// excused: whether the skip protects the streak depends on the month's
+  /// remaining allowance, which the streak engine resolves. This column records
+  /// only what the user did.
   BoolColumn get skipped => boolean().withDefault(const Constant(false))();
 
   /// Optional note for the day — the journal entry.

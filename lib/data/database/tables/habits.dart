@@ -18,20 +18,19 @@ class Habits extends Table {
   IntColumn get colorIndex => integer().withDefault(const Constant(0))();
 
   /// Icon identifier, resolved to an [IconData] by the presentation layer.
-  /// Stored as a name, not a code point: Flutter's icon code points are not
-  /// stable across versions, and a backup restored after an upgrade would
-  /// otherwise show a grid of random glyphs.
+  /// Stored as a name, not a code point: Flutter's icon code points aren't
+  /// stable across versions, and a backup restored after an upgrade would show
+  /// random glyphs.
   TextColumn get iconName => text().withDefault(const Constant('check'))();
 
   /// RRULE subset (SPEC.md §2.6), the same grammar task recurrence uses.
   /// Non-null: a habit with no schedule is never due, which is not a habit.
   TextColumn get scheduleRule => text()();
 
-  /// The logical date intervals count from — normally the day it was created.
-  ///
-  /// "Every 3 days" means every third day from here, so this must be stored
-  /// rather than recomputed. Deriving it from created_at would silently
-  /// reschedule the whole history if a row were ever backfilled.
+  /// The logical date intervals count from, normally the day it was created.
+  /// "Every 3 days" means every third day from here, so it must be stored
+  /// rather than recomputed: deriving it from created_at would reschedule the
+  /// whole history if a row were ever backfilled.
   TextColumn get anchorDate => text()();
 
   /// How many check-offs make a day complete. 1 for a plain yes/no habit.

@@ -3,14 +3,13 @@ import 'package:drift/drift.dart';
 /// One configured time-of-day reminder for a habit (SPEC.md §10.4) — read
 /// model.
 ///
-/// A habit can have several of these: a morning nudge and an evening
-/// last-chance reminder for the same habit. Replaces the single
-/// `habits.reminder_time_min` column.
+/// A habit can have several: a morning nudge and an evening last-chance
+/// reminder. Replaces the single `habits.reminder_time_min` column.
 ///
-/// No `deleted_at` tombstone, for the same reason as `TaskReminderOffsets`:
-/// the event that writes these rows (`habit_reminder_times_set`) always
-/// carries the habit's entire desired set of times, so a rebuild never needs
-/// a removed row's history. Rows that fall out of the set are hard-deleted.
+/// No `deleted_at` tombstone, as for `TaskReminderOffsets`: the event that
+/// writes these rows (`habit_reminder_times_set`) always carries the habit's
+/// entire desired set of times, so a rebuild never needs a removed row's
+/// history. Rows that fall out of the set are hard-deleted.
 class HabitReminderTimes extends Table {
   /// Row identifier (UUIDv7 string).
   TextColumn get id => text()();

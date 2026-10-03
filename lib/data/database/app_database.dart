@@ -83,19 +83,18 @@ class AppDatabase extends _$AppDatabase {
   /// One per-version migration step, run in order for every version between the
   /// file's `user_version` and [schemaVersion].
   ///
-  /// Steps 5 and 6 exist for a database written by an older build, which can
-  /// come back from an Android Auto Backup restore onto a fresh install. They
-  /// used to be missing: `onUpgrade` ran no step at all, then `_createIndexes`
-  /// indexed `habit_entries`, which a schema-4 file does not have. That threw out
-  /// of `main()` before `runApp`, and the launch screen stayed up with nothing
-  /// shown.
+  /// Steps 5 and 6 matter for a database written by an older build, which an
+  /// Android Auto Backup restore can bring back onto a fresh install. Without
+  /// them `onUpgrade` ran no step, `_createIndexes` then indexed
+  /// `habit_entries` (absent from a schema-4 file), and the exception left
+  /// `main()` before `runApp` with the launch screen up and nothing shown.
   ///
-  /// Each step only creates the tables its version introduced. `createTable` is
-  /// `CREATE TABLE IF NOT EXISTS`, so a step is safe to re-run. The legacy
-  /// single-reminder columns on `tasks` (and any on `habits`) are left where
-  /// they are rather than dropped or converted: the new reminder tables are read
-  /// models rebuilt from the event log, so they correctly start empty, and the
-  /// old columns are nullable and unread.
+  /// Each step only creates the tables its version introduced; `createTable` is
+  /// `CREATE TABLE IF NOT EXISTS`, so steps are safe to re-run. The legacy
+  /// single-reminder columns on `tasks` (and any on `habits`) are left in place
+  /// rather than dropped or converted: the new reminder tables are read models
+  /// rebuilt from the event log, so they correctly start empty, and the old
+  /// columns are nullable and unread.
   Future<void> _migrateStep(Migrator m, int targetVersion) async {
     switch (targetVersion) {
       case 5:

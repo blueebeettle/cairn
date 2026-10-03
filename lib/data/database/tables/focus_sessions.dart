@@ -32,26 +32,24 @@ class FocusSessions extends Table {
   /// Logical date in YYYY-MM-DD per session start.
   TextColumn get localDate => text()();
 
-  /// Timezone offset in minutes east of UTC, captured at session START
-  /// (SPEC.md §1.2). +330 in India, −360 in Alberta during summer.
+  /// Timezone offset in minutes east of UTC, captured at session START (SPEC.md
+  /// §1.2). +330 in India, −360 in Alberta during summer.
   ///
-  /// Carried on the session, not looked up when reading, because §4.4 bins
-  /// sessions by local hour and the answer must not depend on where the phone
-  /// is today. Without this column, flying from Ahmedabad to Edmonton moves
-  /// every session ever recorded by 11½ hours and turns a morning habit into a
-  /// late-night one.
-  /// Required, with no default, on purpose. A default of 0 would be UTC, and a
-  /// session that quietly claims to have happened in UTC is a wrong answer that
+  /// Carried on the session rather than looked up when reading, because §4.4
+  /// bins sessions by local hour and the answer must not depend on where the
+  /// phone is today: flying from Ahmedabad to Edmonton would otherwise move
+  /// every session ever recorded by 11½ hours.
+  ///
+  /// Required, with no default, on purpose: a default of 0 would be UTC, and a
+  /// session that quietly claims to have happened in UTC is a wrong answer
   /// nothing complains about. Required means the compiler asks every caller
   /// where the session happened.
   IntColumn get tzOffsetMin => integer()();
 
-  /// IANA zone id at session start, e.g. `Asia/Kolkata`, `America/Edmonton`.
-  ///
-  /// Not used for any calculation — [tzOffsetMin] carries that. This is for
-  /// showing "9am, Kolkata time" beside a session, and for diagnosing a
-  /// timezone bug six months from now when the offset alone is not enough to
-  /// tell you what happened.
+  /// IANA zone id at session start, e.g. `Asia/Kolkata`. Not used for any
+  /// calculation ([tzOffsetMin] carries that); it is for showing "9am, Kolkata
+  /// time" beside a session and for diagnosing a timezone bug when the offset
+  /// alone isn't enough.
   TextColumn get tzId => text().withDefault(const Constant(''))();
 
   /// 'completed' | 'abandoned'
