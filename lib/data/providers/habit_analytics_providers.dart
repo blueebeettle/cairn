@@ -12,14 +12,9 @@ import 'habit_providers.dart';
 
 /// Riverpod wiring for the habit half of the Stats screen (SPEC.md §10.5).
 ///
-/// Kept out of both `analytics_providers.dart` and `habit_providers.dart` so
-/// the Stats-screen habit work can be edited without landing on top of either
-/// the focus-session stats work or the Habits-screen work.
-///
 /// Reuses `statsRangeProvider`/`statsPeriodProvider` from
-/// `analytics_providers.dart` rather than defining a second range picker —
-/// one range picker on the Stats screen driving both halves is the whole
-/// point of putting habits on the same screen.
+/// `analytics_providers.dart` rather than a second range picker: one picker
+/// driving both halves is the point of putting habits on the same screen.
 
 /// Duplicated from `analytics_providers.dart` / `habit_providers.dart`
 /// deliberately — see either file's copy for why.
@@ -76,13 +71,12 @@ final habitHeatmapThresholdsProvider = FutureProvider<HeatmapThresholds>((ref) {
 
 /// The Habits screen's "This week" recap card.
 ///
-/// Deliberately NOT derived from `statsPeriodProvider` the way
-/// [habitStatsBundleProvider] above is. That provider follows the Stats
-/// screen's range picker, which is exactly right for the Stats screen and
-/// exactly wrong here: a card titled "This week" that quietly switched to a
-/// 90-day window because of what was last tapped on another tab would be
-/// contradicting its own heading. The repository resolves the current
-/// calendar week itself, from the same `TimeService` everything else reads.
+/// Deliberately NOT derived from `statsPeriodProvider` like
+/// [habitStatsBundleProvider] above. That follows the Stats screen's range
+/// picker, which is wrong here: a card titled "This week" that switched to a
+/// 90-day window because of what was last tapped on another tab would
+/// contradict its own heading. The repository resolves the current calendar
+/// week itself, from the same `TimeService` everything else reads.
 final weeklyRecapBundleProvider = StreamProvider<WeeklyRecap>((ref) {
   final repo = ref.watch(habitAnalyticsRepositoryProvider);
   return _testSafeStream(repo.watchWeeklyRecap());

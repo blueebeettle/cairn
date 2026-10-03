@@ -9,15 +9,11 @@ import '../repositories/analytics_repository.dart';
 import 'database_provider.dart';
 
 /// Riverpod wiring for the Stats screen — SPEC.md §4.2, §4.4–4.8 and §4.13.
-///
-/// Kept out of `database_provider.dart` so the Stats work and the Today work
-/// can be edited without landing on top of each other.
 
-/// Same guard as the private one in `database_provider.dart`: under
-/// `flutter test`, Drift's StreamQueryStore schedules a zero-duration timer
-/// when a stream is cancelled during teardown, and an un-pumped timer fails
-/// the test. Duplicated rather than shared to keep this file independent; if
-/// the two ever need to change, change both.
+/// Same guard as the private one in `database_provider.dart`: under `flutter
+/// test`, Drift's StreamQueryStore schedules a zero-duration timer when a
+/// stream is cancelled during teardown, and an un-pumped timer fails the test.
+/// Duplicated per file, so change them together.
 Stream<T> _testSafeStream<T>(Stream<T> source) {
   if (!Platform.environment.containsKey('FLUTTER_TEST')) {
     return source;
@@ -46,10 +42,10 @@ final analyticsRepositoryProvider = Provider<AnalyticsRepository>((ref) {
 
 /// The ranges the Stats screen offers.
 ///
-/// Thirty days is the default rather than a week. Most of §4 needs more than
-/// seven points to say anything — §4.5 averages per weekday, so a week gives
-/// every bar an n of 1 — and a screen that opens on a range where half the
-/// metrics read "not enough data yet" teaches the user the screen is empty.
+/// Thirty days is the default rather than a week: most of §4 needs more than
+/// seven points to say anything (§4.5 averages per weekday, so a week gives
+/// every bar an n of 1), and a screen that opens on mostly "not enough data
+/// yet" teaches the user it is empty.
 enum StatsRange {
   week('This week'),
   month('Last 30 days'),
@@ -101,14 +97,12 @@ final heatmapThresholdsProvider = FutureProvider<HeatmapThresholds>((ref) {
   return repo.heatmapThresholds(todayLocalDate: time.todayLocalDate());
 });
 
-/// The period immediately before [period], of exactly the same length.
+/// The period immediately before [period], of exactly the same length. Ends the
+/// day before [period] starts, so the two windows touch without overlapping or
+/// a gap: a 30-day period starting 08-16 is preceded by 07-17..08-15.
 ///
-/// Ends the day before [period] starts, so the two windows touch without
-/// overlapping and without a gap: a 30-day period starting 08-16 is preceded
-/// by the 30 days 07-17..08-15.
-///
-/// Null for [StatsRange.allTime] — there is no "period before all time", and a
-/// trend against one would be an invented comparison.
+/// Null for [StatsRange.allTime]: there is no "period before all time", and a
+/// trend against one would be invented.
 StatsPeriod? statsPriorPeriod(StatsRange range, StatsPeriod period) {
   if (range == StatsRange.allTime) return null;
   final length = TimeService.daysBetween(period.start, period.end) + 1;

@@ -8,15 +8,10 @@ import '../repositories/habits_repository.dart';
 import 'database_provider.dart';
 
 /// Habit providers (SPEC.md §10).
-///
-/// Kept in their own file rather than appended to `database_provider.dart`,
-/// for the same reason `analytics_providers.dart` is separate: two features
-/// being built at once should not be editing the same file.
 
 /// Drift's `.watch()` stream is cancelled when the last listener goes away,
-/// which under `flutter_test` can happen between a pump and an expect.
-/// Duplicated from `analytics_providers.dart` deliberately — sharing it would
-/// mean a common file both features have to touch.
+/// which under `flutter_test` can happen between a pump and an expect. Same
+/// guard as in `analytics_providers.dart`; change them together.
 Stream<T> _testSafeStream<T>(Stream<T> source) {
   if (!Platform.environment.containsKey('FLUTTER_TEST')) {
     return source;
@@ -57,10 +52,10 @@ final archivedHabitsProvider = StreamProvider<List<Habit>>((ref) {
 
 /// Ticks whenever any habit entry changes.
 ///
-/// Exists only to be depended on. A check-off writes `habit_entries`, and a
-/// Drift stream only fires for the tables it actually reads — so watching the
-/// `habits` list alone would leave every streak on screen stale until
-/// something happened to touch a habit row.
+/// Exists only to be depended on: a check-off writes `habit_entries`, and a
+/// Drift stream only fires for the tables it reads, so watching the `habits`
+/// list alone would leave every streak on screen stale until something touched
+/// a habit row.
 final _habitEntryTicksProvider = StreamProvider<List<HabitEntry>>((ref) {
   final db = ref.watch(databaseProvider);
   return _testSafeStream(db.select(db.habitEntries).watch());

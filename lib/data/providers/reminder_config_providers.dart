@@ -8,16 +8,10 @@ import '../repositories/reminder_config_repository.dart';
 import 'database_provider.dart';
 
 /// Reminder-config providers (SPEC.md §10.4/§11).
-///
-/// Kept in their own file rather than appended to `database_provider.dart`,
-/// for the same reason `habit_providers.dart` is separate: a feature that
-/// touches many screens should not be sharing a file with everything else
-/// that does too.
 
 /// Drift's `.watch()` stream is cancelled when the last listener goes away,
-/// which under `flutter_test` can happen between a pump and an expect.
-/// Duplicated from `analytics_providers.dart` deliberately — sharing it would
-/// mean a common file both features have to touch.
+/// which under `flutter_test` can happen between a pump and an expect. Same
+/// guard as in `analytics_providers.dart`; change them together.
 Stream<T> _testSafeStream<T>(Stream<T> source) {
   if (!Platform.environment.containsKey('FLUTTER_TEST')) {
     return source;
