@@ -157,13 +157,11 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
     );
   }
 
-  /// Opens the update dialog the launch-time check asked for.
-  ///
-  /// Deferred to after the current frame so it never lands mid-build, and so
-  /// the app is already on screen and usable when it appears — the check
-  /// itself began only once this shell built, so none of this sits on the
-  /// startup path. Which dialog (dismissible or not) is entirely
-  /// `decideUpdateAction`'s answer, already inside [action].
+  /// Opens the update dialog the launch-time check asked for. Deferred to after
+  /// the current frame so it never lands mid-build and the app is already on
+  /// screen when it appears; the check began only once this shell built, so
+  /// none of this is on the startup path. Which dialog (dismissible or not) is
+  /// entirely `decideUpdateAction`'s answer, already inside [action].
   void _promptForUpdate(UpdateAction action) {
     if (action is NoAction || _updatePromptShown) return;
     _updatePromptShown = true;
