@@ -2,14 +2,14 @@ import '../time/time_service.dart';
 
 /// Habit streaks and habit statistics per SPEC.md §10.3 and §10.5.
 ///
-/// Pure functions over a resolved set of days. No database, no clock, no
-/// Riverpod — every input is passed in, so every rule below is testable
-/// against a fixed date without stubbing anything.
+/// Pure functions over a resolved set of days: no database, no clock, no
+/// Riverpod. Every input is passed in, so each rule is testable against a fixed
+/// date.
 ///
-/// The governing rule from `statistics.dart` carries over unchanged: a rate
-/// with a zero denominator returns **null**, which the UI renders as an em
-/// dash. It never returns 0.0. "You have done none of them" and "none were
-/// asked of you" are different sentences and must not share a number.
+/// The governing rule from `statistics.dart` carries over: a rate with a zero
+/// denominator returns **null**, which the UI renders as an em dash, never 0.0.
+/// "You have done none of them" and "none were asked of you" are different
+/// sentences and must not share a number.
 
 /// One day's raw record for a habit, as stored in `habit_entries`.
 class HabitDayRecord {
@@ -27,28 +27,26 @@ enum HabitDayOutcome {
   /// Target met. Extends the streak.
   done,
 
-  /// Excused — a freeze the user applied by hand, inside the monthly
-  /// allowance. Nothing applies one automatically.
+  /// A freeze the user applied by hand, within the monthly allowance (nothing
+  /// applies one automatically).
   ///
-  /// Counts toward the STREAK exactly like [done] — using a freeze never
-  /// costs you the number, which is what a freeze is for. It is
-  /// still excluded from RATES: a rate answers "how often did you actually do
-  /// it", and a protected day you did not do is honestly reported there even
-  /// though it is protected in the streak.
+  /// Counts toward the STREAK exactly like [done], so using a freeze never costs
+  /// the number. Excluded from RATES, which answer "how often did you actually
+  /// do it": a protected day you did not do is not reported as done there.
   neutral,
 
   /// Scheduled and not met, on a day that is over. Breaks the streak.
   missed,
 
-  /// Today, scheduled, not yet met. Breaks nothing — the day is not over.
+  /// Today, scheduled, not yet met. Breaks nothing: the day is not over.
   pending,
 
   /// Scheduled, but after today. Breaks nothing and counts for nothing.
   ///
-  /// Reachable whenever a caller asks for a window that runs past today — the
-  /// month grid on the detail screen does exactly that for the rest of the
-  /// current month. Without this, tomorrow reads as a miss and one glance at
-  /// the calendar zeroes a live streak.
+  /// Reachable whenever a caller asks for a window that runs past today, as the
+  /// detail screen's month grid does for the rest of the month. Without this,
+  /// tomorrow reads as a miss and one glance at the calendar zeroes a live
+  /// streak.
   future,
 }
 
@@ -74,17 +72,15 @@ abstract final class HabitStats {
   /// Resolves every scheduled day to an outcome, applying the monthly skip
   /// allowance.
   ///
-  /// [scheduledDates] must be ascending and must already be filtered to days
-  /// this habit is scheduled for — see `HabitSchedule.scheduledBetween`. Days
-  /// the habit is not scheduled for are not "missed"; they are invisible, and
-  /// passing them in here is what makes a Mon/Wed/Fri habit look broken every
-  /// Tuesday.
+  /// [scheduledDates] must be ascending and already filtered to days this habit
+  /// is scheduled for (see `HabitSchedule.scheduledBetween`). Unscheduled days
+  /// are not "missed", they are invisible; passing them in is what makes a
+  /// Mon/Wed/Fri habit look broken every Tuesday.
   ///
-  /// [skipAllowancePerMonth] is how many freezes a calendar month excuses.
-  /// Skips are ranked by date, so the first N skips in a month are excused and
-  /// any beyond that count as misses. Bounding it is the point: an unlimited
-  /// skip lets someone hold a 200-day streak while doing nothing, which makes
-  /// the number meaningless.
+  /// [skipAllowancePerMonth] is how many freezes a calendar month excuses. Skips
+  /// are ranked by date, so the first N in a month are excused and any beyond
+  /// that count as misses. The bound is the point: unlimited freezes would let
+  /// someone hold a 200-day streak while doing nothing.
   static Map<String, HabitDayOutcome> resolveOutcomes({
     required List<String> scheduledDates,
     required Map<String, HabitDayRecord> entries,
@@ -95,8 +91,8 @@ abstract final class HabitStats {
     final target = targetCount < 1 ? 1 : targetCount;
 
     // Rank skips within their calendar month, in date order. Only skips on
-    // scheduled days consume allowance — a freeze on a day you were never
-    // due does not spend anything.
+    // scheduled days consume allowance: a freeze on a day you were never due
+    // spends nothing.
     final excused = <String>{};
     final usedPerMonth = <String, int>{};
     for (final date in scheduledDates) {
@@ -123,7 +119,7 @@ abstract final class HabitStats {
       } else if (record != null && record.count >= target) {
         outcomes[date] = HabitDayOutcome.done;
       } else if (isToday) {
-        // Not met yet, but the day is not over. A partial count today (5 of 8
+        // Not met yet, but the day is not over: a partial count today (5 of 8
         // glasses) is pending, not a failure.
         outcomes[date] = HabitDayOutcome.pending;
       } else {
@@ -135,11 +131,10 @@ abstract final class HabitStats {
 
   /// Current and longest streak over [scheduledDates].
   ///
-  /// The single most important rule here: **today never breaks a streak.**
-  /// If today is scheduled and not yet done, the walk steps past it to
-  /// yesterday. Getting this wrong is the classic habit-app bug — you open the
-  /// app over breakfast and it says 0, so you stop trusting the number and
-  /// then stop opening the app.
+  /// The single most important rule here: **today never breaks a streak.** If
+  /// today is scheduled and not yet done, the walk steps past it to yesterday.
+  /// Getting this wrong is the classic habit-app bug: you open the app over
+  /// breakfast, it says 0, and you stop trusting the number.
   static HabitStreakResult computeStreaks({
     required List<String> scheduledDates,
     required Map<String, HabitDayRecord> entries,
@@ -155,10 +150,10 @@ abstract final class HabitStats {
       skipAllowancePerMonth: skipAllowancePerMonth,
     );
 
-    // `neutral` counts the same as `done` here — a freeze costs
-    // nothing off the number, matching what "protects your streak" means to
-    // a user. `pending` and `future` are unresolved, not protected: they are
-    // stepped over without adding or resetting.
+    // `neutral` counts the same as `done` here: a freeze costs nothing off the
+    // number, which is what "protects your streak" means to a user. `pending`
+    // and `future` are unresolved, not protected: they are stepped over without
+    // adding or resetting.
     var current = 0;
     for (var i = scheduledDates.length - 1; i >= 0; i--) {
       final outcome = outcomes[scheduledDates[i]];
@@ -196,10 +191,10 @@ abstract final class HabitStats {
 
   /// Share of scheduled days in a window that were met.
   ///
-  /// Frozen days and today-if-pending are removed from the denominator,
-  /// not counted as failures. Returns null when nothing remains to divide by —
-  /// a Mon/Wed/Fri habit asked about a weekend, or a window before the habit
-  /// existed. Render that as an em dash.
+  /// Frozen days and today-if-pending leave the denominator rather than counting
+  /// as failures. Returns null when nothing remains to divide by (a Mon/Wed/Fri
+  /// habit asked about a weekend, or a window before the habit existed); render
+  /// that as an em dash.
   static double? completionRate({
     required List<String> scheduledDates,
     required Map<String, HabitDayOutcome> outcomes,
@@ -222,9 +217,9 @@ abstract final class HabitStats {
 
   /// Completion rate per weekday, indexed 1 = Monday .. 7 = Sunday.
   ///
-  /// A weekday with no scheduled days maps to null rather than 0.0 — for a
-  /// Mon/Wed/Fri habit, Sunday has no rate, and showing "Sunday 0%" would
-  /// invent a failure that never happened.
+  /// A weekday with no scheduled days maps to null rather than 0.0: for a
+  /// Mon/Wed/Fri habit, Sunday has no rate, and "Sunday 0%" would invent a
+  /// failure that never happened.
   static Map<int, double?> weekdayProfile({
     required List<String> scheduledDates,
     required Map<String, HabitDayOutcome> outcomes,
@@ -250,10 +245,9 @@ abstract final class HabitStats {
     };
   }
 
-  /// How many freezes have been applied in [yearMonth] (`YYYY-MM`).
-  ///
-  /// The UI needs this to say "2 of 2 freezes used this month" *before* the
-  /// user spends the last one, rather than reporting a broken streak after.
+  /// How many freezes have been applied in [yearMonth] (`YYYY-MM`). The UI needs
+  /// this to say "2 of 2 freezes used this month" *before* the last one is
+  /// spent, rather than reporting a broken streak after.
   static int excusedSkipsInMonth({
     required List<String> scheduledDates,
     required Map<String, HabitDayOutcome> outcomes,

@@ -3,45 +3,34 @@ import '../time/time_service.dart';
 
 /// Habit scheduling per SPEC.md §10.2.
 ///
-/// Habits reuse the RRULE subset already defined for task recurrence
-/// ([RecurrenceRule]), so a habit schedule and a task recurrence are the same
-/// string in an export and the parser is shared. What differs is the question
-/// being asked:
+/// Habits reuse the task-recurrence RRULE subset ([RecurrenceRule]), so a habit
+/// schedule is the same string in an export and the parser is shared. The
+/// question being asked differs:
 ///
 ///   tasks   -> "when is the next one?"      (RecurrenceRule.nextAfter)
 ///   habits  -> "was THIS day one of them?"  (HabitSchedule.occursOn)
 ///
-/// A streak needs the second question answerable for an arbitrary past date.
-/// Deriving it from `nextAfter` would mean replaying the series from the start
-/// on every lookup, so it is computed directly here instead.
+/// A streak needs the second answerable for any past date. Deriving it from
+/// `nextAfter` would replay the series from the start on every lookup.
 ///
-/// Everything in and out is a logical date (YYYY-MM-DD) per SPEC.md §1.2, and
-/// every calculation goes through [TimeService], so this is DST-safe: a habit
-/// scheduled "every 3 days" stays on calendar days across a transition rather
-/// than drifting by an hour each time.
-///
-/// This file deliberately does not modify `recurrence.dart`. The two features
-/// are built in parallel, and re-entering a shared file to add a method is how
-/// merge conflicts get resolved by deleting someone's work.
+/// Dates in and out are logical dates (YYYY-MM-DD, SPEC.md §1.2) and all date
+/// math goes through [TimeService], so it is DST-safe: "every 3 days" stays on
+/// calendar days across a transition instead of drifting by an hour.
 abstract final class HabitSchedule {
-  /// The furthest back [previousScheduledDate] will look before giving up.
-  ///
-  /// A yearly-ish rule (monthly with interval 12) can leave a gap just over
-  /// 365 days; 800 clears that with room and still terminates promptly on a
-  /// rule that matches nothing.
+  /// How far [previousScheduledDate] and [nextScheduledDate] look before giving
+  /// up. A monthly rule with interval 12 can leave a gap just over 365 days; 800
+  /// clears that and still ends promptly on a rule that matches nothing.
   static const int _searchLimitDays = 800;
 
   /// Whether [localDate] is a day this habit is scheduled for.
   ///
-  /// [anchorDate] is the habit's start date — normally the logical date it was
-  /// created. Intervals count from it, so "every 3 days" means every third day
-  /// *from when you started*, not from an arbitrary epoch. Two people starting
-  /// the same habit on different days get different days, which is correct.
+  /// [anchorDate] is the habit's start date, normally the logical date it was
+  /// created. Intervals count from it: "every 3 days" means every third day from
+  /// when you started, not from an arbitrary epoch.
   ///
-  /// A null [rule] means the habit has no schedule and is never due. A date
-  /// before [anchorDate] is never scheduled: a habit cannot be missed on a day
-  /// it did not yet exist, and counting those would show every new habit with
-  /// an instantly broken streak.
+  /// A null [rule] means no schedule, so never due. A date before [anchorDate]
+  /// is never scheduled: a habit can't be missed before it existed, and counting
+  /// those days would give every new habit an instantly broken streak.
   static bool occursOn({
     required RecurrenceRule? rule,
     required String anchorDate,
@@ -67,10 +56,9 @@ abstract final class HabitSchedule {
     if (!rule.byWeekday.contains(weekday)) return false;
     if (rule.interval == 1) return true;
 
-    // Weeks are counted Monday-to-Monday, independent of the user's display
-    // week-start setting — exactly as recurrence.dart does it. Otherwise
-    // changing "week starts on Sunday" in settings would silently reschedule
-    // every existing habit and reset streaks that were never broken.
+    // Weeks are counted Monday-to-Monday, independent of the display week-start
+    // setting, as in recurrence.dart. Otherwise changing that setting would
+    // reschedule every habit and reset streaks that were never broken.
     final weeksApart =
         TimeService.daysBetween(_mondayOf(anchor), _mondayOf(date)) ~/ 7;
     return weeksApart >= 0 && weeksApart % rule.interval == 0;
@@ -91,14 +79,12 @@ abstract final class HabitSchedule {
     return false;
   }
 
-  /// Every scheduled date in `[start, end]` inclusive, ascending.
+  /// Every scheduled date in `[start, end]` inclusive, ascending. Dates before
+  /// [anchorDate] are excluded, and an empty or inverted window returns an empty
+  /// list rather than throwing.
   ///
-  /// Dates before [anchorDate] are excluded. Returns an empty list when
-  /// [end] is before [start] rather than throwing — an empty window is a
-  /// normal thing for a UI to ask about.
-  ///
-  /// This is the form the streak walk wants. Calling [previousScheduledDate]
-  /// repeatedly instead would turn a linear walk into a quadratic one.
+  /// This is the form the streak walk wants: calling [previousScheduledDate]
+  /// repeatedly would make it quadratic.
   static List<String> scheduledBetween({
     required RecurrenceRule? rule,
     required String anchorDate,
@@ -163,19 +149,17 @@ abstract final class HabitSchedule {
     return TimeService.addDays(localDate, -(weekday - 1));
   }
 
-  /// Day-of-month rules in short months.
-  ///
-  /// Clamps rather than skipping, matching recurrence.dart: someone who sets a
-  /// habit for the 31st expects February to land on the 28th, not to vanish
-  /// for a month and take their streak with it.
+  /// Day-of-month rules in short months. Clamps rather than skipping, matching
+  /// recurrence.dart: a habit set for the 31st lands on the 28th in February
+  /// instead of vanishing for a month and taking the streak with it.
   static String _clampToMonth(int year, int month, int day) {
     final lastDay = DateTime.utc(year, month + 1, 0).day;
     return TimeService.formatIsoDate(year, month, day > lastDay ? lastDay : day);
   }
 
-  /// The [n]th [weekday] of a month; n == -1 means the last one.
-  /// Returns null when the month has no such day (there is no 5th Tuesday in
-  /// most months), which correctly makes that month unscheduled.
+  /// The [n]th [weekday] of a month; n == -1 means the last one. Null when the
+  /// month has no such day (most months have no 5th Tuesday), which leaves that
+  /// month unscheduled.
   static String? _nthWeekdayOf(int year, int month, int n, int weekday) {
     final lastDay = DateTime.utc(year, month + 1, 0).day;
 
