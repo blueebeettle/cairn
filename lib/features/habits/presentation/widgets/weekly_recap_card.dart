@@ -11,29 +11,29 @@ import '../../../../theme/app_theme.dart';
 /// The "This week" card at the top of the Habits screen.
 ///
 /// Match: `claude-outputs/designs/WeeklyRecap.dc.html` /
-/// `WeeklyRecap.Dark.dc.html` — 22 radius, 20/20/22/20 padding, a Mon–Sun bar
+/// `WeeklyRecap.Dark.dc.html`: 22 radius, 20/20/22/20 padding, a Mon–Sun bar
 /// strip over three stat tiles.
 ///
 /// One departure from those boards: they close the completion line with "your
-/// best week this month". Nothing in this app keeps week-over-week history, so
-/// that superlative could not be checked before being printed — the same
-/// objection that removed "Your best month yet" from the Stats hero. The line
-/// carries a real comparison against last week instead, and drops the
-/// comparison entirely when there is no last week to compare with.
+/// best week this month", but nothing in this app keeps week-over-week history,
+/// so that superlative couldn't be checked (the same objection that removed
+/// "Your best month yet" from the Stats hero). The line carries a real
+/// comparison against last week instead, and drops it when there is no last
+/// week.
 ///
 /// Renders nothing when there are no active habits, matching
-/// `HabitStatsBundle.hasAnyData`'s gate: a card of em dashes is not a useful
-/// first impression.
+/// `HabitStatsBundle.hasAnyData`: a card of em dashes is not a useful first
+/// impression.
 class WeeklyRecapCard extends ConsumerWidget {
   const WeeklyRecapCard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final recap = ref.watch(weeklyRecapBundleProvider).valueOrNull;
-    // No card while it loads and no card on error: this sits above the habit
-    // list, and a spinner or an error strip there would push the list around
-    // on every check-off for something that is decoration, not the screen's
-    // job. The list below reports its own failures.
+    // No card while loading and none on error: this sits above the habit list,
+    // and a spinner or error strip there would push the list around on every
+    // check-off for something that is decoration. The list below reports its
+    // own failures.
     if (recap == null || !recap.hasAnyData) return const SizedBox.shrink();
 
     final tokens = context.tokens;
@@ -53,11 +53,10 @@ class WeeklyRecapCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              // The same uppercase eyebrow every other card heading uses.
-              // The boards drew this one as an 18px Bricolage title, but
-              // Today already labels the identical words "THIS WEEK" as an
-              // eyebrow a tab away, and two casings for one phrase is the
-              // kind of thing you only notice as sloppiness.
+              // The same uppercase eyebrow every other card heading uses. The
+              // boards drew this as an 18px Bricolage title, but Today already
+              // labels the identical words "THIS WEEK" as an eyebrow a tab
+              // away, and two casings for one phrase reads as sloppiness.
               Expanded(child: CardChrome.sectionLabel(context, 'This week')),
               const SizedBox(width: 8),
               Text(
@@ -113,11 +112,10 @@ class WeeklyRecapCard extends ConsumerWidget {
 }
 
 /// "Sep 17 – 23", or "Sep 28 – Oct 4" when the week straddles two months.
-///
-/// Written here rather than pulled in with `intl`: this is the only date range
-/// the app formats, and one three-line function is a smaller thing to own than
-/// a dependency and its locale data. English month abbreviations only, which
-/// is what every other piece of copy in this app already assumes.
+/// Written here rather than pulling in `intl`: it is the only date range the
+/// app formats, and one three-line function is smaller than a dependency and
+/// its locale data. English month abbreviations only, as in the rest of the
+/// app's copy.
 String formatWeekRange(String startLocalDate, String endLocalDate) {
   const months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
@@ -132,14 +130,13 @@ String formatWeekRange(String startLocalDate, String endLocalDate) {
   return '$startStr – $endStr';
 }
 
-/// The line under the heading: this week's rate, and how it moved.
-///
-/// Three shapes, in order of how much can honestly be said:
-///  * no scorable day this week — an em dash, never "0% completion", the same
-///    zero-versus-undefined rule the rest of the app follows;
-///  * a rate but no last week to compare against (a first-ever week) — the
-///    plain rate, with no comparison invented from an assumed zero;
-///  * both — the rate and the signed move, in percentage points.
+/// The line under the heading: this week's rate, and how it moved. Three
+/// shapes, in order of how much can honestly be said:
+/// * no scorable day this week: an em dash, never "0% completion", per the
+///   app's zero-versus-undefined rule;
+/// * a rate but no last week to compare against (a first-ever week): the plain
+///   rate, with no comparison invented from an assumed zero;
+/// * both: the rate and the signed move, in percentage points.
 String weeklyRecapSummaryLine(WeeklyRecap recap) {
   final rate = recap.completionRate;
   if (rate == null) return '— completion. Check something off and this fills in.';
@@ -191,8 +188,8 @@ class _DayBars extends StatelessWidget {
               Text(
                 // From the date itself, not the column index: `recap.days` is
                 // already anchored to the user's week start, so a fixed
-                // Monday-first array put the wrong letter over every bar as
-                // soon as that setting was not Monday.
+                // Monday-first array put the wrong letter over every bar once
+                // that setting wasn't Monday.
                 MomentumWeekStrip.weekdayLabel(recap.days[i].date),
                 style: textTheme.bodySmall?.copyWith(
                   fontSize: 10,
@@ -206,17 +203,16 @@ class _DayBars extends StatelessWidget {
   }
 }
 
-/// One day's bar.
-///
-/// Three states, and the difference between the last two is the point:
-///  * a scored day — [AppTokens.heatmap]'s mid purple, or the brand primary
-///    when it is today, which is the same "today is the emphasized one"
-///    convention the Stats journey trail's `Now` column uses;
-///  * a day that happened with nothing to score — a full-strength stub in
-///    `lineSoft`, the boards' empty Friday;
-///  * a day still to come — the same stub at reduced opacity, because a
-///    Thursday that has not arrived is not a Thursday you missed, and drawing
-///    them identically would accuse the user of a miss on a Tuesday.
+/// One day's bar. Three states, and the difference between the last two is the
+/// point:
+/// * a scored day: [AppTokens.heatmap]'s mid purple, or the brand primary when
+///   it is today, the same "today is emphasized" convention as the Stats
+///   journey trail's `Now` column;
+/// * a day that happened with nothing to score: a full-strength stub in
+///   `lineSoft`, the boards' empty Friday;
+/// * a day still to come: the same stub at reduced opacity, because a Thursday
+///   that hasn't arrived isn't one you missed, and drawing them identically
+///   would accuse the user of a miss on a Tuesday.
 class _Bar extends StatelessWidget {
   const _Bar({required this.day});
 

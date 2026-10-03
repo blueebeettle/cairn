@@ -23,9 +23,9 @@ import 'widgets/weekly_recap_card.dart';
 /// Grouped so nobody scrolls past finished work: **Today** (due, not done),
 /// **Done today** (collapsed to a count), **Not scheduled today** (collapsed).
 ///
-/// Grouping reads the *confirmed* snapshot, not the optimistic count. A tap
-/// fills the circle instantly; the card then moves to "Done today" a frame or
-/// two later, once the write lands — rather than vanishing under the finger.
+/// Grouping reads the *confirmed* snapshot, not the optimistic count: a tap
+/// fills the circle instantly, and the card moves to "Done today" a frame or
+/// two later once the write lands, rather than vanishing under the finger.
 class HabitsScreen extends ConsumerStatefulWidget {
   const HabitsScreen({super.key});
 
@@ -148,12 +148,11 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
       children: [
-        // Above the list, below the header — and inside the ListView rather
-        // than pinned over it, so it scrolls away instead of eating a third
-        // of the screen on a phone with a dozen habits. It renders nothing
-        // when there are no active habits, which `_buildList` already
-        // guarantees, but the card re-checks for itself rather than relying
-        // on this one caller.
+        // Above the list, below the header, and inside the ListView so it
+        // scrolls away instead of eating a third of the screen on a phone with
+        // a dozen habits. It renders nothing without active habits, which
+        // `_buildList` already guarantees, but the card re-checks for itself
+        // rather than relying on this one caller.
         const WeeklyRecapCard(),
         if (due.isNotEmpty) ...[
           const _SectionHeader('Today'),

@@ -19,9 +19,9 @@ import 'habit_marks.dart';
 ///                          (absent means the day was not scheduled)
 ///   after today         -> `future` if `HabitSchedule.occursOn`, else blank
 ///
-/// The month runs past today, and those days are drawn plainly empty —
-/// never as missed. A calendar that paints the rest of the month as failures
-/// is the fastest way to make a working streak look broken.
+/// The month runs past today, and those days are drawn plainly empty, never as
+/// missed: a calendar that paints the rest of the month as failures is the
+/// fastest way to make a working streak look broken.
 ///
 /// Months before the habit's anchor are not rendered; the arrows stop there.
 class HabitMonthGrid extends ConsumerStatefulWidget {

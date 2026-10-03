@@ -10,16 +10,16 @@ import '../../../data/repositories/habits_repository.dart';
 import '../../../data/repositories/settings_repository.dart';
 import '../../reminders/reminder_service.dart';
 
-/// Optimistic check-off state: habit id -> today's count as the UI should
-/// show it, while the write is in flight.
+/// Optimistic check-off state: habit id -> today's count as the UI should show
+/// it, while the write is in flight.
 ///
 /// A tap fills the circle *now*. Waiting for the transaction and the Drift
-/// stream to round-trip is 30–80ms on a phone, which is long enough to feel
-/// like the tap did not land — and a second tap then double-counts.
+/// stream to round-trip is 30–80ms on a phone, long enough to feel like the tap
+/// didn't land, and a second tap then double-counts.
 ///
-/// This holds only the count. The streak, the dots and the sections all read
-/// the confirmed snapshot; they catch up a frame or two later. Nothing here
-/// computes a streak.
+/// This holds only the count. The streak, dots and sections all read the
+/// confirmed snapshot and catch up a frame or two later. Nothing here computes
+/// a streak.
 class HabitCheckController extends StateNotifier<Map<String, int>> {
   HabitCheckController(this._ref) : super(const {}) {
     _ref.listen<AsyncValue<List<HabitSnapshot>>>(
@@ -38,11 +38,11 @@ class HabitCheckController extends StateNotifier<Map<String, int>> {
 
   /// The freshest confirmed count per habit, straight from the provider.
   ///
-  /// A widget's `snapshot` can be a frame older than the provider: the
-  /// provider updates, this drops its override, and the button only gets the
-  /// new snapshot on the next build. A tap inside that window would compute
-  /// from the stale count — for a yes/no habit, turning an intended undo into
-  /// a second check-off. So the base count comes from here, not the widget.
+  /// A widget's `snapshot` can be a frame older than the provider: the provider
+  /// updates, this drops its override, and the button only gets the new
+  /// snapshot on the next build. A tap in that window would compute from the
+  /// stale count (for a yes/no habit, turning an intended undo into a second
+  /// check-off), so the base count comes from here, not the widget.
   Map<String, int> _confirmed = const {};
 
   /// Writes are serialised per habit. Five quick taps are five transactions
@@ -60,13 +60,10 @@ class HabitCheckController extends StateNotifier<Map<String, int>> {
   bool isDoneFor(HabitSnapshot snapshot) =>
       countFor(snapshot) >= _target(snapshot.habit);
 
-  /// One tap on the check button.
-  ///
-  /// Below target: one more check-off. At or above target: undo one. No
-  /// confirm dialog — putting a tick back must cost exactly one tap.
-  ///
-  /// A habit not scheduled today is a no-op; the UI does not offer the button
-  /// at all, and this is the backstop.
+  /// One tap on the check button. Below target: one more check-off. At or above
+  /// target: undo one, with no confirm dialog, because putting a tick back must
+  /// cost exactly one tap. A habit not scheduled today is a no-op; the UI
+  /// doesn't offer the button at all, and this is the backstop.
   Future<void> tap(HabitSnapshot snapshot) {
     if (!snapshot.isScheduledToday) return Future.value();
     // Fire-and-forget: the circle must not wait on the vibrator, and a
@@ -146,11 +143,9 @@ class HabitCheckController extends StateNotifier<Map<String, int>> {
   }
 
   /// A check-off can change which day the next reminder belongs to: a habit
-  /// completed today should not nag this evening.
-  ///
-  /// No early-out on "does this habit have reminders configured" any more —
-  /// `scheduleForHabit` reads the habit's `habit_reminder_times` rows itself
-  /// and is a cheap no-op when there aren't any.
+  /// completed today shouldn't nag this evening. No early-out on "has reminders
+  /// configured": `scheduleForHabit` reads the habit's `habit_reminder_times`
+  /// rows itself and is a cheap no-op when there are none.
   void _rescheduleReminder(Habit habit) {
     unawaited(() async {
       try {

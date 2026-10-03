@@ -26,21 +26,20 @@ class PendingMilestoneCelebration {
 }
 
 /// Detects a habit's streak crossing a `MilestoneThresholds` round number for
-/// the first time, and holds the one-shot event a UI layer consumes to open
-/// the full-screen celebration.
+/// the first time, and holds the one-shot event a UI layer consumes to open the
+/// full-screen celebration.
 ///
-/// This is the "celebrated once" half of §9. `MilestoneThresholds.reached`
-/// (§5) already keeps day 31 of a 30-day streak from looking like a
-/// milestone; what it does not do is stop day 30 itself from being seen more
-/// than once — a resumed app, a second habit's snapshot recomputing the same
-/// tick, a stream replay. That is what the persisted highest-celebrated
-/// marker below is for.
+/// This is the "celebrated once" half of §9. `MilestoneThresholds.reached` (§5)
+/// already keeps day 31 of a 30-day streak from looking like a milestone; it
+/// doesn't stop day 30 itself from being seen more than once (a resumed app, a
+/// second habit's snapshot recomputing the same tick, a stream replay). The
+/// persisted highest-celebrated marker below does.
 ///
-/// Persisted in the existing `settings` key-value table as one JSON map
-/// (habit id -> highest streak celebrated), rather than a new Drift column —
-/// §9 asks to check for something that already fits before adding schema,
-/// and `settings` already holds exactly this shape of flag (see
-/// `habit_view_mode`, `theme_mode` and friends in `database_provider.dart`).
+/// Persisted in the existing `settings` key-value table as one JSON map (habit
+/// id -> highest streak celebrated) rather than a new Drift column: §9 asks to
+/// check for something that already fits before adding schema, and `settings`
+/// already holds this shape of flag (see `habit_view_mode`, `theme_mode` in
+/// `database_provider.dart`).
 class MilestoneCelebrationController
     extends StateNotifier<PendingMilestoneCelebration?> {
   MilestoneCelebrationController(this._ref) : super(null) {
@@ -87,10 +86,9 @@ class MilestoneCelebrationController
     if (!mounted) return;
 
     // The provider may already have resolved while the settings read was in
-    // flight. `ref.listen` below only fires on the *next* change, so without
-    // this check a milestone reached before this controller finished loading
-    // — the common case, since habits load before settings round-trip — would
-    // never be seen.
+    // flight. `ref.listen` only fires on the *next* change, so without this
+    // check a milestone reached before loading finished (the common case, since
+    // habits load before settings round-trip) would never be seen.
     final current = _ref.read(habitSnapshotsProvider).value;
     if (current != null) _checkForNewMilestones(current);
   }
@@ -111,10 +109,10 @@ class MilestoneCelebrationController
         habitId: snapshot.habit.id,
         streak: milestone,
       );
-      // One at a time. A second habit crossing a threshold on the same
-      // snapshot gets its turn on the next recomputation, once this one is
-      // consumed — piling two full-screen celebrations back to back would
-      // just mean tapping through the second to get back to the app.
+      // One at a time: a second habit crossing a threshold on the same snapshot
+      // gets its turn on the next recomputation, once this one is consumed. Two
+      // full-screen celebrations back to back would just mean tapping through
+      // the second.
       return;
     }
   }

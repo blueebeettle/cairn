@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../../../data/repositories/habits_repository.dart';
 
-/// Shared chrome for a habit that just hit a milestone.
-///
-/// Geometry from the milestone card in `claude-outputs/designs/HabitsList.dc.html`
-/// — a 2px ring in the accent plus a soft drop glow, and a filled streak pill
-/// in place of the ordinary flame badge. Kept here rather than inline in
-/// `habits_screen.dart` so §4's celebration screen can reuse the same accent.
+/// Shared chrome for a habit that just hit a milestone. Geometry from the
+/// milestone card in `claude-outputs/designs/HabitsList.dc.html`: a 2px ring in
+/// the accent plus a soft drop glow, and a filled streak pill in place of the
+/// ordinary flame badge. Kept here so §4's celebration screen can reuse the
+/// same accent.
 abstract final class MilestoneChrome {
   /// The milestone accent.
   ///
@@ -43,13 +42,11 @@ abstract final class MilestoneChrome {
       BorderSide(color: accent(context), width: 2);
 }
 
-/// Freezes still available this month for one habit.
-///
-/// `skipAllowancePerMonth - excusedThisMonth`, floored at zero. The single
-/// place this subtraction happens — [FreezesChip] on the Habits list sums it
-/// across every habit in view via [totalFreezesRemaining], and §4's
-/// celebration footer reads it for the one habit being celebrated. Neither
-/// call site repeats the arithmetic.
+/// Freezes still available this month for one habit: `skipAllowancePerMonth -
+/// excusedThisMonth`, floored at zero. The single place this subtraction
+/// happens: [FreezesChip] sums it across every habit in view via
+/// [totalFreezesRemaining], and §4's celebration footer reads it for the one
+/// habit being celebrated.
 int habitFreezesRemaining(HabitSnapshot snapshot) {
   final left = snapshot.habit.skipAllowancePerMonth - snapshot.excusedThisMonth;
   return left > 0 ? left : 0;
@@ -114,14 +111,12 @@ class MilestoneStreakPill extends StatelessWidget {
   }
 }
 
-/// The "N freezes" pill beside the Habits title.
+/// The "N freezes" pill beside the Habits title: freezes still available this
+/// month, summed across the habits in view.
 ///
-/// Counts freezes still available this month — `skipAllowancePerMonth`
-/// minus what has been excused — summed across the habits in view.
-///
-/// A freeze is spent by hand: nothing in the app applies one to a missed day
-/// on its own. The tooltip says so, because "4 freezes" beside a streak
-/// reads, to anyone who has used a habit app before, as automatic protection.
+/// A freeze is spent by hand; nothing in the app applies one to a missed day on
+/// its own. The tooltip says so, because "4 freezes" beside a streak reads, to
+/// anyone who has used a habit app, as automatic protection.
 class FreezesChip extends StatelessWidget {
   const FreezesChip({super.key, required this.remaining});
 
@@ -140,9 +135,9 @@ class FreezesChip extends StatelessWidget {
         label: '$label left this month',
         excludeSemantics: true,
         // The app bar already carries three actions; at a 200% font scale an
-        // unbounded chip is what tips the row into an overflow. It scales down
-        // instead of growing — the full wording still reaches a screen reader
-        // through the label above, which text scale does not affect.
+        // unbounded chip tips the row into overflow. It scales down instead of
+        // growing, and the full wording still reaches a screen reader through
+        // the label above, which text scale doesn't affect.
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 112),
           child: FittedBox(

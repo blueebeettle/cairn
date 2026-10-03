@@ -5,12 +5,10 @@ import 'package:flutter/material.dart';
 import '../../../../theme/app_theme.dart';
 
 /// The check-off flourish: a short pop plus three flecks thrown clear of the
-/// circle.
-///
-/// Purely decorative — it reacts to [done] going true and holds no state of
-/// its own. The flecks take their colours from `context.tokens.series`, and
-/// the whole thing is inside 200ms, so it lands with the tap rather than
-/// asking to be watched.
+/// circle. Purely decorative: it reacts to [done] going true and holds no
+/// state. The flecks take their colours from `context.tokens.series`, and the
+/// whole thing is inside 200ms so it lands with the tap rather than asking to
+/// be watched.
 class HabitCheckBurst extends StatefulWidget {
   const HabitCheckBurst({
     super.key,

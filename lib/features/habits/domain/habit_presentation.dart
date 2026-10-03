@@ -8,10 +8,9 @@ import '../../../data/repositories/habits_repository.dart';
 import '../../../theme/app_theme.dart';
 
 /// Presentation helpers for habits: icons, colours, and schedules in words.
-///
-/// Nothing here computes a streak. Streaks come from `HabitSnapshot.streaks`
-/// and only from there — two places computing the same number is how a
-/// screen and a stat end up disagreeing.
+/// Nothing here computes a streak: streaks come from `HabitSnapshot.streaks`
+/// only, since two places computing the same number is how a screen and a stat
+/// end up disagreeing.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Icons
@@ -20,8 +19,8 @@ import '../../../theme/app_theme.dart';
 /// The one place a stored `icon_name` becomes an [IconData].
 ///
 /// `habits.icon_name` stores these KEYS, never a code point: Flutter's code
-/// points are not stable across SDK versions, and a backup restored after an
-/// upgrade would otherwise come back as a grid of random glyphs (SPEC §10.1).
+/// points aren't stable across SDK versions, and a backup restored after an
+/// upgrade would come back as random glyphs (SPEC §10.1).
 ///
 /// Keys are append-only. Renaming or removing one orphans every habit that
 /// stored it; an unknown key falls back to [fallback] rather than crashing.
@@ -61,12 +60,11 @@ abstract final class HabitIcons {
 // Colours
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// `habits.color_index` indexes the theme's categorical series.
-///
-/// SPEC.md forbids inventing colours; `AppTokens.series` is already contrast-
-/// checked in both themes, so the habit palette IS that list. An out-of-range
-/// index wraps rather than throwing — a restored backup from a build with a
-/// longer palette must still render.
+/// `habits.color_index` indexes the theme's categorical series. SPEC.md forbids
+/// inventing colours and `AppTokens.series` is already contrast-checked in both
+/// themes, so the habit palette IS that list. An out-of-range index wraps
+/// rather than throwing, so a backup from a build with a longer palette still
+/// renders.
 abstract final class HabitColors {
   static int get count => AppTokens.light.series.length;
 
@@ -189,12 +187,11 @@ abstract final class HabitDates {
 // Schedules in words
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Turns a stored RRULE into the words a person would use.
-///
-/// The user never sees `FREQ=WEEKLY;BYDAY=MO,WE,FR`. Every rule the §2.6
-/// grammar can express gets a sentence here, including the ones the create
-/// sheet cannot build (every-other-week, nth weekday), because a habit
-/// restored from a backup or written by a later build must still read well.
+/// Turns a stored RRULE into the words a person would use; the user never sees
+/// `FREQ=WEEKLY;BYDAY=MO,WE,FR`. Every rule the §2.6 grammar can express gets a
+/// sentence, including ones the create sheet can't build (every-other-week, nth
+/// weekday), because a habit restored from a backup or written by a later build
+/// must still read well.
 abstract final class HabitScheduleText {
   static String describe(String? raw) {
     final rule = RecurrenceRule.parse(raw);
@@ -270,11 +267,10 @@ abstract final class HabitOutcomeText {
 // Read-only views over a snapshot
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Derived views the screens need, read off an existing snapshot.
-///
-/// Every value here is a *lookup* into `snapshot.streaks.outcomes` or a call
-/// into `HabitStats` — the same engine the snapshot used. None of it walks a
-/// streak, so it cannot drift from the number in the header.
+/// Derived views the screens need, read off an existing snapshot. Every value
+/// is a *lookup* into `snapshot.streaks.outcomes` or a call into `HabitStats`,
+/// the engine the snapshot used. None of it walks a streak, so it can't drift
+/// from the number in the header.
 extension HabitSnapshotViews on HabitSnapshot {
   /// The last [n] scheduled days up to and including today, oldest first.
   ///
@@ -325,13 +321,13 @@ extension HabitSnapshotViews on HabitSnapshot {
   /// rather than a miss.
   ///
   /// Today is skipped: an unchecked habit resolves to `missed` all day, so
-  /// reading today would hide yesterday's freeze behind a miss that has not
-  /// happened yet. A freeze applied to today needs no forgiveness line
-  /// either — the list already files it under "done today".
+  /// reading today would hide yesterday's freeze behind a miss that hasn't
+  /// happened yet. A freeze applied to today needs no forgiveness line, since
+  /// the list already files it under "done today".
   ///
-  /// Only the latest settled day counts: a freeze three weeks back is
-  /// history, and labelling the row for it reads as though the streak were
-  /// still in doubt.
+  /// Only the latest settled day counts: a freeze three weeks back is history,
+  /// and labelling the row for it reads as though the streak were still in
+  /// doubt.
   String? get freezeUsedOn {
     for (final date in scheduledDates.reversed) {
       if (date == todayLocalDate) continue;

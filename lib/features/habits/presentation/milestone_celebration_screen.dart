@@ -17,21 +17,19 @@ import 'widgets/habit_milestone.dart';
 /// `MilestoneThresholds` round number (§4).
 ///
 /// Opened by `NavigationShell` when `milestoneCelebrationControllerProvider`
-/// reports a pending `habitId`/`streak` pair — see that controller for the
-/// trigger and "celebrated once" bookkeeping. Nothing here decides *whether*
+/// reports a pending `habitId`/`streak` pair (see that controller for the
+/// trigger and "celebrated once" bookkeeping). Nothing here decides *whether*
 /// to celebrate, only how.
 ///
 /// Match: `claude-outputs/designs/Milestone.dc.html` /
-/// `Milestone.Dark.dc.html`, with two deliberate departures from those
-/// boards:
-///  * the primary/secondary actions are swapped — "Keep going" primary,
-///    "Share your cairn" secondary — per the brief this was built from,
-///    rather than the mockup's share-first pair.
-///  * the personal-best line only appears when this streak is actually the
-///    habit's best (`current >= longest`). A habit that broke a longer
-///    streak and is now celebrating a fresh 30-day run has not "never gone
-///    this far before" — that claim would be false the moment someone who
-///    once ran 100 days sees it at day 30.
+/// `Milestone.Dark.dc.html`, with two deliberate departures from those boards:
+/// * the primary/secondary actions are swapped, "Keep going" primary and "Share
+///   your cairn" secondary, per the brief this was built from, rather than the
+///   mockup's share-first pair.
+/// * the personal-best line only appears when this streak is actually the
+///   habit's best (`current >= longest`). A habit that broke a longer streak
+///   and is celebrating a fresh 30-day run hasn't "never gone this far before";
+///   the claim would be false for someone who once ran 100 days.
 class MilestoneCelebrationScreen extends ConsumerStatefulWidget {
   const MilestoneCelebrationScreen({
     super.key,
@@ -119,13 +117,13 @@ class _MilestoneCelebrationScreenState
     final colors = context.colors;
     final isDark = colors.brightness == Brightness.dark;
 
-    // The mockup's full-bleed background is a solid deep purple in light
-    // mode but the app's own near-black ground in dark mode — not literally
-    // `colorScheme.primary` in either theme (that token is a light lavender
-    // in dark mode, which would wash out the card and the confetti rather
-    // than sit behind them). `tertiary` is the exact light-mode token for
-    // that purple (`#40128B`), and dark mode is already that dark by
-    // default, so it reuses `surface` instead of inventing a second one.
+    // The mockup's full-bleed background is a solid deep purple in light mode
+    // but the app's own near-black ground in dark mode. Not literally
+    // `colorScheme.primary` in either theme (that token is a light lavender in
+    // dark mode, which would wash out the card and the confetti). `tertiary` is
+    // the exact light-mode token for that purple (`#40128B`), and dark mode is
+    // already that dark, so it reuses `surface` instead of inventing a second
+    // one.
     final background = isDark ? colors.surface : colors.tertiary;
     final onBackground = isDark ? colors.onSurface : colors.onTertiary;
 
@@ -390,12 +388,10 @@ class _FreezeFooterChip extends StatelessWidget {
   }
 }
 
-/// Decorative confetti flecks scattered above and below the card.
-///
-/// A fixed, designed scatter lifted from the mockup's layout (fractional, so
-/// it holds up across phone sizes) rather than randomly generated — the
-/// screen should look the same on every celebration, not roll new confetti
-/// each time.
+/// Decorative confetti flecks scattered above and below the card: a fixed,
+/// designed scatter lifted from the mockup (fractional, so it holds across
+/// phone sizes) rather than random, so the screen looks the same on every
+/// celebration.
 class _ConfettiField extends StatelessWidget {
   const _ConfettiField();
 

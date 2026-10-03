@@ -10,14 +10,13 @@ import '../../domain/habit_presentation.dart';
 
 /// What the freeze row says, computed before the user commits.
 ///
-/// SPEC §10.3: the UI must show what remains *before* the last freeze is
-/// spent — "2 of 2 freezes used this month — freezing again will reset your
-/// streak" — rather than reporting a broken streak afterwards.
+/// SPEC §10.3: the UI must show what remains *before* the last freeze is spent
+/// ("2 of 2 freezes used this month — freezing again will reset your streak"),
+/// not report a broken streak afterwards.
 ///
-/// The function keeps its old name: it is the internal handle for the
-/// per-habit monthly allowance (`skipAllowancePerMonth`), and only the words
-/// it produces are user-facing. Those say "freeze", the one name the app uses
-/// for this everywhere.
+/// The function keeps its old name as the internal handle for the per-habit
+/// monthly allowance (`skipAllowancePerMonth`); only the words it produces are
+/// user-facing, and those say "freeze", the one name the app uses everywhere.
 ({String text, bool warn}) restDayAllowanceText(
   HabitSnapshot snapshot,
   String localDate,

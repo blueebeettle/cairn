@@ -9,12 +9,10 @@ import '../habit_check_controller.dart';
 import 'habit_check_burst.dart';
 import 'habit_marks.dart';
 
-/// The check-off control for one habit, or — when the habit is not due
-/// today — a greyed "Next: Wednesday" in its place.
-///
-/// A habit that is not scheduled today gets no circle at all. An unchecked
-/// circle invites a tap, and a tap on a day the habit does not run would be
-/// someone breaking their own data.
+/// The check-off control for one habit, or, when the habit isn't due today, a
+/// greyed "Next: Wednesday" in its place. A habit not scheduled today gets no
+/// circle at all: an unchecked circle invites a tap, and a tap on a day the
+/// habit doesn't run would be someone breaking their own data.
 class HabitCheckButton extends ConsumerWidget {
   const HabitCheckButton({
     super.key,

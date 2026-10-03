@@ -19,11 +19,11 @@ enum _ScheduleKind { everyDay, certainDays, everyFewDays, monthly }
 /// Create or edit a habit.
 ///
 /// Saving calls `createHabit` / `updateHabit` and nothing else writes: the
-/// repository puts the event and the projection down together (SPEC §0).
-/// The only other call is to the reminder service, which reads the saved
-/// habit back and schedules — or cancels — its notification.
+/// repository puts the event and the projection down together (SPEC §0). The
+/// only other call is to the reminder service, which reads the saved habit back
+/// and schedules or cancels its notification.
 ///
-/// The user never sees RRULE syntax. The schedule controls build the rule;
+/// The user never sees RRULE syntax: the schedule controls build the rule and
 /// [HabitScheduleText] reads it back.
 class HabitEditSheet extends ConsumerStatefulWidget {
   const HabitEditSheet({super.key, this.habit});

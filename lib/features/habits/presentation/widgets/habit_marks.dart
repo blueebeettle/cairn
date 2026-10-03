@@ -14,8 +14,8 @@ import '../../../../theme/app_theme.dart';
 ///   future   nothing           (NEVER drawn as missed)
 ///   null     nothing           (not a scheduled day)
 ///
-/// One painter for the card dots and the month grid, so the two can never
-/// disagree about what a hollow circle means.
+/// One painter for the card dots and the month grid, so the two can't disagree
+/// about what a hollow circle means.
 class HabitDayMarkPainter extends CustomPainter {
   HabitDayMarkPainter({
     required this.outcome,
@@ -115,10 +115,9 @@ class HabitDayMark extends StatelessWidget {
   }
 }
 
-/// The streak number with a flame.
-///
-/// Zero is not a failure. A new habit has broken nothing, so 0 renders as a
-/// muted dash with an outlined flame — never a red zero.
+/// The streak number with a flame. Zero is not a failure: a new habit has
+/// broken nothing, so 0 renders as a muted dash with an outlined flame, never a
+/// red zero.
 class HabitStreakBadge extends StatelessWidget {
   const HabitStreakBadge({
     super.key,
