@@ -145,13 +145,12 @@ class TimerController extends StateNotifier<TimerState> {
   ///
   /// The widget's background isolate writes `timer_states` directly, so a
   /// session can start, pause, resume or stop while this controller is alive
-  /// but backgrounded — leaving memory stale. Only re-run full recovery when
-  /// there is actually something to reconcile: either memory already reflects
-  /// an in-progress session (always safe to re-derive from the DB, which is
-  /// authoritative), or the DB now shows a session memory does not know about.
-  /// If both sides agree nothing is active, do nothing — so a user who picked
-  /// Flow mode and a custom duration on the idle Timer screen does not lose
-  /// that just by switching tabs and back.
+  /// but backgrounded, leaving memory stale. Full recovery re-runs only when
+  /// there is something to reconcile: memory already reflects an in-progress
+  /// session (always safe to re-derive from the authoritative DB), or the DB
+  /// now shows a session memory doesn't know about. If both agree nothing is
+  /// active, do nothing, so a user who picked Flow mode and a custom duration
+  /// on the idle Timer screen doesn't lose that by switching tabs and back.
   Future<void> reconcileOnResume() async {
     final row = await _timerRepo.loadTimerState();
     final dbHasActiveSession = row != null && row.startedAtUtc != null;

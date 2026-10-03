@@ -572,9 +572,9 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
   /// Not `SegmentedButton`: the global `segmentedButtonTheme` gives two
   /// adjoining stadium outlines, which is right where it is already used but
   /// reads as two buttons rather than the single-track control this redesign
-  /// uses for mode-like choices. Built the same way the Stats range picker
-  /// builds its Week/30d/90d/All track, rather than reskinning that theme —
-  /// five other screens depend on it.
+  /// uses for mode-like choices. Built like the Stats range picker's
+  /// Week/30d/90d/All track rather than reskinning that theme, which five other
+  /// screens depend on.
   Widget _buildModePicker(
     BuildContext context,
     TimerController controller,
