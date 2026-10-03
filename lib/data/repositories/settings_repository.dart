@@ -82,16 +82,15 @@ class SettingsRepository {
         .map((row) => row == null ? null : jsonDecode(row.value));
   }
 
-  /// Allocates a monotonic 32-bit notification ID from settings ('next_notification_id'),
-  /// starting at 1000, never reused.
+  /// Allocates a monotonic 32-bit notification ID from settings
+  /// ('next_notification_id'), starting at 1000, never reused.
   ///
-  /// Wrapped in a transaction: reminder reconciliation now schedules tasks
-  /// and habits in parallel (see ReminderService.reconcileAll/reconcileHabits),
-  /// so this read-then-write can be called concurrently for several rows
-  /// that all still need a fresh id. Drift serializes transactions on its
-  /// single connection, so this stays a plain atomic increment under that
-  /// concurrency instead of two callers racing to read the same "current"
-  /// value and handing out the same id to two different reminders.
+  /// Wrapped in a transaction: reminder reconciliation schedules tasks and
+  /// habits in parallel (see ReminderService.reconcileAll/reconcileHabits), so
+  /// this read-then-write can run concurrently for several rows needing a fresh
+  /// id. Drift serializes transactions on its single connection, so it stays an
+  /// atomic increment instead of two callers reading the same "current" value
+  /// and handing out one id twice.
   Future<int> getNextNotificationId() async {
     return _db.transaction(() async {
       final current = await getInt('next_notification_id') ?? 1000;

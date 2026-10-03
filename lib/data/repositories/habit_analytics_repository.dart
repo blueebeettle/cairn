@@ -10,11 +10,10 @@ import 'settings_repository.dart';
 /// The one place a [HabitSnapshot] becomes the engine's Drift-free
 /// [HabitStatsInput].
 ///
-/// Shared, rather than private to the repository, because a second consumer
-/// needs the same mapping: the Today screen's momentum strip pools its own
-/// per-day rates from the snapshots it already watches, and a second copy of
-/// this conversion — or of the pooling done against raw snapshots — is exactly
-/// how the strip and the Habits recap would come to disagree about a day.
+/// Shared rather than private because the Today screen's momentum strip pools
+/// its own per-day rates from the snapshots it already watches, and a second
+/// copy of this conversion is how the strip and the Habits recap would come to
+/// disagree about a day.
 extension HabitSnapshotStatsInput on HabitSnapshot {
   HabitStatsInput toStatsInput() => HabitStatsInput(
         habitId: habit.id,
@@ -29,23 +28,18 @@ extension HabitSnapshotStatsInput on HabitSnapshot {
 }
 
 /// Database wiring for the habit half of the Stats screen (SPEC.md §10.5).
-///
-/// Deliberately separate from `AnalyticsRepository`, for the same reason
-/// `StatsRepository` and `AnalyticsRepository` are already separate from each
-/// other: two features that can be built and touched independently should
-/// not share a file just because they both answer "how am I doing".
+/// Deliberately separate from `AnalyticsRepository`, as `StatsRepository` and
+/// `AnalyticsRepository` are from each other.
 ///
 /// All the pooling arithmetic lives in `core/stats/habit_statistics.dart` and
-/// is tested without a database. This class only loads snapshots — by
-/// composing `HabitsRepository`, which already knows how to build one habit's
-/// full history and streaks — flattens them into the engine's plain input
-/// type, and hands the result over.
+/// is tested without a database. This class loads snapshots by composing
+/// `HabitsRepository`, flattens them into the engine's plain input type, and
+/// hands the result over.
 ///
 /// Reusing `HabitsRepository.loadActiveSnapshots()` rather than querying
-/// `habit_entries` directly here is deliberate: that method is also what the
-/// Habits screen and the detail screen use to compute streaks, so the
-/// current/longest streak numbers on the Stats leaderboard can never disagree
-/// with the number on a habit's own card.
+/// `habit_entries` directly is deliberate: the Habits and detail screens
+/// compute streaks from it too, so the Stats leaderboard's current/longest
+/// streak can never disagree with a habit's own card.
 class HabitAnalyticsRepository {
   HabitAnalyticsRepository({
     required AppDatabase db,
@@ -62,10 +56,10 @@ class HabitAnalyticsRepository {
   final SettingsRepository _settings;
   final HabitsRepository _habits;
 
-  /// Cache key for the weekly threshold recomputation — see
+  /// Cache key for the weekly threshold recomputation; see
   /// `AnalyticsRepository.thresholdsCacheKey` for why weekly. A distinct key
-  /// (and a distinct settings row) from the focus heatmap's, since the two
-  /// scales measure different things and must not overwrite each other.
+  /// (and settings row) from the focus heatmap's, since the two scales measure
+  /// different things and must not overwrite each other.
   static const thresholdsCacheKey = 'habit_heatmap_thresholds_v1';
 
   /// Same window as the focus heatmap (§4.13): today and the 364 days before.
@@ -74,11 +68,9 @@ class HabitAnalyticsRepository {
   // ── Row fetching ─────────────────────────────────────────────────────────
 
   /// Every active habit's history, flattened into the engine's input type.
-  ///
-  /// Archived and deleted habits are left out, matching what
-  /// `habitSnapshotsProvider` already shows on the Habits screen — a habit
-  /// the user stopped is stopped everywhere at once, including in its own
-  /// contribution to the pooled numbers and the heatmap.
+  /// Archived and deleted habits are left out, matching
+  /// `habitSnapshotsProvider` on the Habits screen: a habit the user stopped is
+  /// stopped everywhere, including in the pooled numbers and the heatmap.
   Future<List<HabitStatsInput>> _inputs() async {
     final snapshots = await _habits.loadActiveSnapshots();
     return [for (final snapshot in snapshots) snapshot.toStatsInput()];
@@ -105,16 +97,14 @@ class HabitAnalyticsRepository {
   // ── Weekly recap ────────────────────────────────────────────────────
 
   /// The Habits screen's "This week" card, for the current calendar week.
+  /// Always the live week, never the Stats screen's range picker; see
+  /// [WeeklyRecap]'s doc for why.
   ///
-  /// Always the live week, never [StatsPeriod] from the Stats screen's range
-  /// picker — see [WeeklyRecap]'s doc for why a card headed "This week" must
-  /// not follow that selection.
-  ///
-  /// One [_inputs] call covers the lot. [buildWeeklyRecap] asks the same
+  /// One [_inputs] call covers the lot: [buildWeeklyRecap] asks the same
   /// in-memory list about this week, last week and each of seven days, and
   /// since those functions are pure the extra windows cost arithmetic rather
-  /// than queries — the same trick the Stats trend chip uses to price its
-  /// prior-period comparison at zero.
+  /// than queries (the same trick the Stats trend chip uses for its
+  /// prior-period comparison).
   Future<WeeklyRecap> loadWeeklyRecap() async {
     final inputs = await _inputs();
     final today = _time.todayLocalDate();
@@ -142,13 +132,12 @@ class HabitAnalyticsRepository {
   StatsPeriod heatmapWindow(String todayLocalDate) =>
       StatsPeriod.lastNDays(todayLocalDate, heatmapWindowDays);
 
-  /// Thresholds for the habit heatmap's legend, recomputed at most once a
-  /// week — same cadence and the same reasoning as
-  /// `AnalyticsRepository.heatmapThresholds`.
-  ///
-  /// Once non-provisional thresholds exist, they are cached for the remainder
-  /// of the week; provisional cache entries are treated as invalid so the user
-  /// can promote to the real scale mid-week as soon as they reach 14 non-zero days.
+  /// Thresholds for the habit heatmap's legend, recomputed at most once a week,
+  /// with the same cadence and reasoning as
+  /// `AnalyticsRepository.heatmapThresholds`. Non-provisional thresholds are
+  /// cached for the rest of the week; provisional entries count as invalid so
+  /// the user is promoted to the real scale mid-week as soon as they reach 14
+  /// non-zero days.
   Future<HeatmapThresholds> heatmapThresholds({
     required String todayLocalDate,
     bool forceRecompute = false,
@@ -181,15 +170,14 @@ class HabitAnalyticsRepository {
     return thresholds;
   }
 
-  /// Returns null when the cache is absent, stale, malformed, or provisional — a
-  /// malformed or hand-edited settings row costs one recomputation rather
-  /// than a crash on the way into the Stats screen, and a provisional entry is
-  /// treated as invalid so it can promote to the real scale mid-week.
+  /// Returns null when the cache is absent, stale, malformed, or provisional: a
+  /// hand-edited settings row costs one recomputation rather than a crash on
+  /// the way into the Stats screen, and a provisional entry is invalid so it
+  /// can promote mid-week.
   ///
   /// Duplicated from `AnalyticsRepository._readCachedThresholds` rather than
-  /// shared: same reasoning as the `_testSafeStream` duplication in the
-  /// provider files — two independent features should not be made to share a
-  /// file just because they happen to need the same six lines.
+  /// shared, like the `_testSafeStream` copies in the provider files; change
+  /// them together.
   static HeatmapThresholds? _readCachedThresholds(Object? cached, String weekKey) {
     if (cached is! Map) return null;
     if (cached['week'] != weekKey) return null;

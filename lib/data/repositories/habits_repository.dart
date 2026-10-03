@@ -11,10 +11,9 @@ import 'events_repository.dart';
 
 /// A habit together with everything the UI needs to draw it (SPEC.md §10.5).
 ///
-/// Loaded as one bundle from one consistent read, for the same reason
-/// `StatsBundle` exists: a streak computed from one query and a day grid
-/// computed from another can disagree across a midnight boundary, and that
-/// disagreement is invisible in testing and obvious to a user.
+/// Loaded as one bundle from one consistent read, as with `StatsBundle`: a
+/// streak from one query and a day grid from another can disagree across a
+/// midnight boundary, which is invisible in testing and obvious to a user.
 class HabitSnapshot {
   const HabitSnapshot({
     required this.habit,
@@ -111,13 +110,13 @@ class HabitsRepository {
     final today = timeService.todayLocalDate();
     final order = sortOrder ?? now.toDouble();
 
-    // Every field written to the projection below must be in this payload,
-    // for the same reason as `changed` in [updateHabit]: a value that reaches
-    // the read model but not the log cannot be rebuilt from it (SPEC §0).
+    // Every field written to the projection below must be in this payload, as
+    // with `changed` in [updateHabit]: a value that reaches the read model but
+    // not the log can't be rebuilt from it (SPEC §0).
     //
-    // Event and projection go in one transaction: written one after the
-    // other, a crash between the two leaves an orphan event with no habit
-    // behind it, or — worse — a habit with no event a rebuild could find.
+    // Event and projection go in one transaction: written one after the other,
+    // a crash between them leaves an orphan event with no habit, or a habit
+    // with no event a rebuild could find.
     await db.transaction(() async {
       await eventsRepository.logEvent(
         type: EventTypes.habitCreated,
@@ -513,11 +512,9 @@ class HabitsRepository {
     return _buildSnapshot(habit, rows);
   }
 
-  /// Loads every active habit with its history, in one pass.
-  ///
-  /// One query for the habits and one for all their entries — not one query
-  /// per habit. The N+1 that this avoids is the same one that cost the Tasks
-  /// screen 120ms before it was batched.
+  /// Loads every active habit with its history, in one pass: one query for the
+  /// habits and one for all their entries, not one per habit (the N+1 that cost
+  /// the Tasks screen 120ms before it was batched).
   Future<List<HabitSnapshot>> loadActiveSnapshots() async {
     final habits = await (db.select(db.habits)
           ..where((h) =>

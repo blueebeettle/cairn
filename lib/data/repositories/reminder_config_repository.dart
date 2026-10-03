@@ -7,18 +7,11 @@ import '../database/app_database.dart';
 import 'events_repository.dart';
 import 'settings_repository.dart';
 
-/// Read model and event writer for per-item reminder configuration
-/// (SPEC.md §10.4/§11): a task's countdown offsets and a habit's
-/// times-of-day.
+/// Read model and event writer for per-item reminder configuration (SPEC.md
+/// §10.4/§11): a task's countdown offsets and a habit's times-of-day.
 ///
-/// Kept separate from `tasks_repository.dart` and `habits_repository.dart`
-/// on purpose — the same reason `habits_repository.dart` was split out from
-/// day one: those two files are where Antigravity's screen work lands most,
-/// and a narrowly-scoped file here means a reminder change never has to
-/// merge against that.
-///
-/// Every mutating method writes its event *first*, in the same transaction
-/// as the row changes, per SPEC.md §0.
+/// Every mutating method writes its event *first*, in the same transaction as
+/// the row changes, per SPEC.md §0.
 class ReminderConfigRepository {
   ReminderConfigRepository({
     required this.db,

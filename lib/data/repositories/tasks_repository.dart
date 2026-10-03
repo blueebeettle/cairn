@@ -309,13 +309,12 @@ class TasksRepository {
       payload: payload,
     );
 
-    // A brand-new timed task starts with the current global default
-    // countdown offsets (SPEC §11) — every creation path gets this for free,
-    // not just the edit sheet, so quick capture and a recurring series'
-    // next instance land the same way a manually created task does. A
-    // caller that wants something different (or nothing) writes over it
-    // afterwards with `ReminderConfigRepository.setTaskReminderOffsets` —
-    // that call always replaces the full set, so this seed is never additive.
+    // A brand-new timed task starts with the current global default countdown
+    // offsets (SPEC §11), so every creation path gets them (quick capture and a
+    // recurring series' next instance too, not just the edit sheet). A caller
+    // that wants something different writes over it afterwards with
+    // `ReminderConfigRepository.setTaskReminderOffsets`, which always replaces
+    // the full set, so this seed is never additive.
     if (dueAt != null && !dueIsAllDay) {
       await _reminderConfig.seedDefaultTaskReminderOffsets(taskId);
     }

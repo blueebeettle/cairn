@@ -36,22 +36,20 @@ class EventsRepository {
   /// ## When to pass [localDateOverride]
   ///
   /// For most events the instant and the day agree, and the default is right.
-  /// Session lifecycle events are the exception. SPEC.md §1.4 says a session
-  /// belongs *entirely* to the logical day on which it STARTED, but a session
-  /// that crosses the day-start boundary ends on the following logical day:
+  /// Session lifecycle events are the exception: SPEC.md §1.4 says a session
+  /// belongs *entirely* to the logical day on which it STARTED, but one that
+  /// crosses the day-start boundary ends on the following logical day:
   ///
   ///   day start 04:00, session runs 03:30 -> 04:15
   ///     started -> logical day D
   ///     ended   -> logical day D+1
   ///
   /// Left to the default, `focus_sessions.local_date` would say D while the
-  /// `session_completed` event said D+1. SPEC.md §0 exists precisely so the
-  /// event log and the read model cannot disagree about a day — so pass the
-  /// session's START logical date on `session_completed`, `session_abandoned`
-  /// and `session_interrupted`.
-  ///
-  /// `occurred_at` still records the true instant. The two fields answer
-  /// different questions: when it happened, and which day it counts toward.
+  /// `session_completed` event said D+1, and SPEC.md §0 exists so the event log
+  /// and the read model can't disagree about a day. So pass the session's START
+  /// logical date on `session_completed`, `session_abandoned` and
+  /// `session_interrupted`. `occurred_at` still records the true instant: it
+  /// answers when it happened, `local_date` which day it counts toward.
   Future<Event> logEvent({
     required String type,
     int? occurredAtUtcMs,

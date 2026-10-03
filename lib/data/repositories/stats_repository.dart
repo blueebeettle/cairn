@@ -237,20 +237,19 @@ class StatsRepository {
   }
 
   /// The dates on which the daily-focus streak landed exactly on a
-  /// `MilestoneThresholds` value — 7, 14, 30, 60, 100, then every hundred.
+  /// `MilestoneThresholds` value: 7, 14, 30, 60, 100, then every hundred.
   ///
-  /// Walks the met days in order exactly as [longestStreak] does, but instead
-  /// of tracking the best run it records the date each run *reaches* a
-  /// threshold. Only the day the streak crosses the number is marked: a run of
-  /// 45 days marks day 7, 14 and 30, not the 42 days in between.
+  /// Walks the met days in order as [longestStreak] does, but records the date
+  /// each run *reaches* a threshold instead of tracking the best run. Only the
+  /// day the streak crosses the number is marked: a 45-day run marks day 7, 14
+  /// and 30, not the 42 days in between.
   ///
-  /// Known limitation, shared with the heatmap this feeds: the run counter can
-  /// only see the days present in [secondsByDate]. If that map starts in the
-  /// middle of a real streak — the caller passing a windowed query rather than
-  /// all history — the first met day restarts the count at 1, so a streak that
-  /// had already passed 30 before the window opens will be re-marked as it
-  /// re-crosses each threshold inside it. Callers that care pass full history;
-  /// [watchMilestoneDates] does.
+  /// Known limitation, shared with the heatmap this feeds: the run counter only
+  /// sees the days in [secondsByDate]. If that map starts mid-streak (a
+  /// windowed query rather than all history), the first met day restarts the
+  /// count at 1, so a streak that had passed 30 before the window opens is
+  /// re-marked as it re-crosses each threshold inside it. Callers that care
+  /// pass full history; [watchMilestoneDates] does.
   static Set<String> milestoneDates(
     Map<String, int> secondsByDate,
     int goalMinutes,
