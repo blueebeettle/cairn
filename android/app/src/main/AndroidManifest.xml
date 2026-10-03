@@ -33,10 +33,18 @@
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+      allowBackup is off, deliberately. Auto Backup silently restoring an
+      old focus_stack.sqlite onto a fresh install is what caused the 2.3.0
+      launch hang (missing habits/habit_entries tables from a stale
+      schema-4 file). Cairn already has its own backup/restore feature;
+      Android's is redundant and, as of this bug, actively dangerous.
+    -->
     <application
         android:label="Cairn"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false">
         <!--
           flutter_local_notifications receivers. Without these the plugin can
           schedule but never deliver: ScheduledNotificationReceiver is what
