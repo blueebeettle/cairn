@@ -13,12 +13,10 @@ class FeatureInfoSection {
   final String body;
 }
 
-/// What a screen's feature is and how to use it.
-///
-/// Surfaced twice, deliberately: once as a [FeatureInfoCard] the first time
-/// someone lands on the screen (so a new user cannot miss it), and
-/// permanently behind a [FeatureInfoButton] in the app bar (so anyone can go
-/// back for the detail later without the card nagging forever).
+/// What a screen's feature is and how to use it. Surfaced twice: as a
+/// [FeatureInfoCard] the first time someone lands on the screen, and
+/// permanently behind a [FeatureInfoButton] in the app bar, so anyone can go
+/// back for the detail without the card nagging forever.
 class FeatureInfo {
   const FeatureInfo({
     required this.id,
@@ -120,19 +118,18 @@ class FeatureInfoButton extends StatelessWidget {
   }
 }
 
-/// Inline explainer shown until the user dismisses it.
-///
-/// Renders nothing at all once dismissed, and renders nothing while the
-/// stored flag is still loading — a card that appears a frame late and
-/// shoves the screen down is worse than one that never flashes.
+/// Inline explainer shown until the user dismisses it. Renders nothing once
+/// dismissed, and nothing while the stored flag is still loading: a card that
+/// appears a frame late and shoves the screen down is worse than one that never
+/// flashes.
 class FeatureInfoCard extends ConsumerStatefulWidget {
   const FeatureInfoCard({super.key, required this.info, this.padding});
 
   final FeatureInfo info;
 
-  /// Outer padding. Defaults to a standalone inset; screens whose own list
-  /// already pads horizontally should pass one with no horizontal component
-  /// so the card lines up with the content rather than sitting inside it.
+  /// Outer padding. Defaults to a standalone inset; screens whose list already
+  /// pads horizontally should pass one with no horizontal component so the card
+  /// lines up with the content.
   final EdgeInsetsGeometry? padding;
 
   @override
@@ -179,13 +176,11 @@ class _FeatureInfoCardState extends ConsumerState<FeatureInfoCard> {
   Widget build(BuildContext context) {
     if (_visible != true) return const SizedBox.shrink();
 
-    // At very large text scales this card is the first thing that should give
-    // way. Screens like Tasks carry a fixed header — filter chips and tabs —
-    // that already fills the viewport at 200%, so several lines of optional
-    // explanation on top of it cannot fit however it is laid out. The
-    // app-bar button carries exactly the same text and stays at every scale,
-    // so nothing is actually lost; the onboarding nicety just steps aside
-    // for the content it is describing.
+    // At very large text scales this card should give way first. Screens like
+    // Tasks carry a fixed header (filter chips and tabs) that already fills the
+    // viewport at 200%, so optional explanation on top can't fit. The app-bar
+    // button carries the same text and stays at every scale, so nothing is
+    // lost.
     final scaledBodySize = MediaQuery.textScalerOf(context).scale(14);
     if (scaledBodySize > 14 * 1.5) return const SizedBox.shrink();
 

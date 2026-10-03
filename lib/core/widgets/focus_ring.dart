@@ -3,26 +3,19 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Single shared FocusRing widget used by BOTH the Today and Timer screens.
+/// Single shared FocusRing used by BOTH the Today and Timer screens.
 ///
-/// Implements exact geometry:
-/// - ringBox     = (screenWidth * widthFactor).clamp(200.0, 260.0) dp
-/// - stroke      = ringBox * 0.07 (~14-18dp)
-/// - trackStroke = stroke (same, not thinner)
-/// - strokeCap   = StrokeCap.round
-/// - start angle = -90 degrees (12 o'clock), sweeping clockwise
+/// Geometry: ring box = (screenWidth * widthFactor).clamp(200, 260) dp; stroke
+/// = box * 0.07 (~14-18dp) for track and progress alike; round caps; starts at
+/// 12 o'clock and sweeps clockwise. The Ready state draws the track only, no
+/// progress arc.
 ///
-/// Colors:
-/// - track    = colorScheme.primaryContainer
-/// - progress = colorScheme.primary
-/// - paused   = colorScheme.secondary (the lighter lavender)
-/// - Ready state draws the TRACK ONLY, no progress arc
+/// Colors: track = colorScheme.primaryContainer, progress =
+/// colorScheme.primary, paused = colorScheme.secondary (the lighter lavender).
 ///
-/// Center text:
-/// - figure   = (screenWidth * 0.13).clamp(44.0, 56.0) dp, Bricolage Grotesque,
-///               w700, tabular figures, height 1.0
-/// - label    = labelSmall, letterSpacing 1.4, uppercase, onSurfaceVariant
-/// - gap between figure and label = 4dp
+/// Center text: the figure is (screenWidth * 0.13).clamp(44, 56) dp, Bricolage
+/// Grotesque, w700, tabular figures, height 1.0; the label is labelSmall,
+/// letterSpacing 1.4, uppercase, onSurfaceVariant; 4dp between them.
 class FocusRing extends StatelessWidget {
   const FocusRing({
     super.key,

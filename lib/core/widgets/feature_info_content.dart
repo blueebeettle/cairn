@@ -1,11 +1,9 @@
 import 'feature_info.dart';
 
-/// The help text for each screen, kept in one place so the wording stays
-/// consistent and the numbers stay honest.
-///
-/// These describe what the app actually does, not what it ideally would.
-/// If a rule changes — what counts as a finished session, when a day rolls
-/// over, how a streak survives — change it here in the same edit.
+/// The help text for each screen, kept in one place so wording stays consistent
+/// and numbers stay honest. These describe what the app actually does; if a
+/// rule changes (what counts as a finished session, when a day rolls over, how
+/// a streak survives), change it here in the same edit.
 abstract final class FeatureInfoContent {
   static const today = FeatureInfo(
     id: 'today',
@@ -170,11 +168,9 @@ abstract final class FeatureInfoContent {
     ],
   );
 
-  /// The Stats explainer, in plain language.
-  ///
-  /// Deliberately explicit about the rules that make a number look "wrong":
-  /// stopped sessions counting as zero, the 4am day boundary, and today never
-  /// breaking a streak.
+  /// The Stats explainer, in plain language. Explicit about the rules that make
+  /// a number look "wrong": stopped sessions counting as zero, the 4am day
+  /// boundary, and today never breaking a streak.
   static const stats = FeatureInfo(
     id: 'stats',
     title: 'How these numbers work',

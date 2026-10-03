@@ -2,20 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// The one definition of Cairn's card surfaces and tracks.
-///
-/// This started as a private `_StatsChrome` on the Stats screen and was
-/// duplicated per screen on purpose — a per-screen helper meant restyling one
-/// screen could not silently restyle another. Once six screens wanted the same
-/// values that reasoning inverted: the copies were the only thing standing
-/// between the app and a consistent card system, and they had already drifted
-/// into three different treatments on screens sitting next to each other.
+/// The one definition of Cairn's card surfaces and tracks, shared so every
+/// screen's cards stay consistent.
 ///
 /// Every colour here is a brightness switch rather than one Material slot,
-/// because the light and dark boards land on different slots: the card is
-/// `#FFFFFF` on cream but `#201829` on the dark ground, and picking a single
-/// slot either greys the light card or makes the dark card darker than the
-/// page it sits on.
+/// because light and dark land on different slots: the card is `#FFFFFF` on
+/// cream but `#201829` on the dark ground, and any single slot either greys the
+/// light card or makes the dark card darker than the page it sits on.
 abstract final class CardChrome {
   /// The standard card fill: `#FFFFFF` / `#201829`.
   static Color card(BuildContext context) {
@@ -57,16 +50,13 @@ abstract final class CardChrome {
   }
 }
 
-/// A card in Cairn's card system: 22-radius, filled, flat.
-///
-/// Flat on purpose — the system used to be shadow-led, and the shadows were
-/// dropped because they did not suit the app's soft cream/ink palette. A card
-/// is told apart from the page by its fill, the way the pre-redesign cards
-/// were.
+/// A card in Cairn's card system: 22-radius, filled, flat. Flat on purpose:
+/// shadows didn't suit the soft cream/ink palette, so a card is told apart from
+/// the page by its fill.
 ///
 /// Use this instead of Material's [Card] for anything hand-built. [Card] still
-/// works — `cardTheme` in `app_theme.dart` is pointed at the same radius,
-/// surface and flatness — but this one takes an [onTap] that covers the whole
+/// works (`cardTheme` in `app_theme.dart` is pointed at the same radius,
+/// surface and flatness), but this one takes an [onTap] that covers the whole
 /// card including its padding.
 class CairnCard extends StatelessWidget {
   const CairnCard({
@@ -89,9 +79,9 @@ class CairnCard extends StatelessWidget {
   /// Overrides the standard fill — for the flatter [CardChrome.panel] look.
   final Color? color;
 
-  /// An outline on top of the fill. Off by default — the fill alone separates
-  /// a card from the page. Reach for it where the border carries meaning, such
-  /// as an overdue task's danger tint.
+  /// An outline on top of the fill. Off by default, since the fill alone
+  /// separates a card from the page. Use it where the border carries meaning,
+  /// such as an overdue task's danger tint.
   final BoxBorder? border;
 
   final VoidCallback? onTap;

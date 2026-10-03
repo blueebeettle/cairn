@@ -2,23 +2,22 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// The shared stone-stack glyph behind the Cairn redesign.
-///
-/// The same widget backs Today's "Grow your cairn" card, the milestone
-/// celebration, the Habits-list milestone card and the Stats "Your journey"
-/// trail — only [stoneCount], [scale], [showMarker] and [opacity] change.
+/// The shared stone-stack glyph behind the Cairn redesign. The same widget
+/// backs Today's "Grow your cairn" card, the milestone celebration, the
+/// Habits-list milestone card and the Stats "Your journey" trail; only
+/// [stoneCount], [scale], [showMarker] and [opacity] change.
 ///
 /// Geometry is lifted verbatim from the approved mockups: the four full-size
-/// stones and the marker come from the "Grow your cairn" card in
+/// stones and the marker from the "Grow your cairn" card in
 /// `claude-outputs/designs/Today.dc.html` (wrapper 76x86), and the reduced
-/// stone counts at small scales are the same shapes as the seven mini
-/// instances in the "Your journey" trail of `claude-outputs/designs/Stats.dc.html`.
+/// stone counts from the seven mini instances in the "Your journey" trail of
+/// `claude-outputs/designs/Stats.dc.html`.
 ///
-/// The silhouette is deliberately irregular — alternating rotations, offsets
-/// that do not line up, visible gaps with a contact shadow in each gap, and a
-/// *detached* marker floating above the top stone. A symmetric, continuously
-/// tapering stack was rejected in review for reading as a single blob, so
-/// nothing here should be "tidied up" into an even taper.
+/// The silhouette is deliberately irregular: alternating rotations, offsets
+/// that don't line up, visible gaps with a contact shadow in each, and a
+/// *detached* marker floating above the top stone. A symmetric, tapering stack
+/// was rejected in review for reading as a single blob, so don't "tidy" it into
+/// an even taper.
 class CairnGlyph extends StatelessWidget {
   const CairnGlyph({
     super.key,
@@ -28,13 +27,13 @@ class CairnGlyph extends StatelessWidget {
     this.opacity = 1.0,
   });
 
-  /// How many stones are "grown" so far. Clamped to 0-4; 0 renders an empty box
-  /// of the same size, so a growing glyph never shifts the layout around it.
+  /// How many stones are "grown", clamped to 0-4. 0 renders an empty box of the
+  /// same size, so a growing glyph never shifts the layout around it.
   final int stoneCount;
 
   /// 1.0 is the Today-card size (76x86 logical pixels). The box keeps that
-  /// aspect at every scale so a row of glyphs at different scales bottom-aligns
-  /// cleanly — which is what the Stats trail needs.
+  /// aspect at every scale so a row of glyphs at different scales
+  /// bottom-aligns, which the Stats trail needs.
   final double scale;
 
   /// The glowing top disc. Off for the muted/faded trail stones.
@@ -46,8 +45,8 @@ class CairnGlyph extends StatelessWidget {
   static const double baseWidth = 76;
   static const double baseHeight = 86;
 
-  /// The four stone fills, bottom to top. Intentionally identical in light and
-  /// dark: they are decorative, and all four read fine on either ground.
+  /// The four stone fills, bottom to top. Identical in light and dark: they're
+  /// decorative and read fine on either ground.
   static const List<Color> stoneFills = <Color>[
     Color(0xFF40128B),
     Color(0xFF590D86),
@@ -95,8 +94,8 @@ class CairnGlyph extends StatelessWidget {
     ),
   ];
 
-  /// Contact shadow sitting in the gap *below* stone `index + 1`. Sells the
-  /// stacking without real shadows, exactly as the mockup does.
+  /// Contact shadow in the gap *below* stone `index + 1`. Sells the stacking
+  /// without real shadows, as the mockup does.
   static const List<_Contact> _contacts = <_Contact>[
     _Contact(
         bottom: 15,
@@ -131,10 +130,9 @@ class CairnGlyph extends StatelessWidget {
   /// is a Flutter blurRadius of r / 2 / 0.57735, i.e. r * 0.866.
   static double _cssBlur(double cssRadius) => cssRadius * 0.866;
 
-  /// The marker's ring + glow, on their own.
-  ///
-  /// Exposed so other surfaces can mark "now" with the same device instead of
-  /// inventing a second glow — the Today week strip's today column uses it.
+  /// The marker's ring and glow on their own, exposed so other surfaces (the
+  /// Today week strip's today column) can mark "now" with the same device
+  /// instead of inventing a second glow.
   static List<BoxShadow> markerHalo(BuildContext context, {double scale = 1.0}) {
     final palette = _CairnPalette.of(context);
     return [
@@ -277,10 +275,9 @@ class _Contact {
   final double darkAlpha;
 }
 
-/// Everything except the four stone fills comes from the theme.
-///
-/// A few roles genuinely differ by brightness in the mockups, so they are
-/// resolved here once rather than re-guessed at each call site:
+/// Everything except the four stone fills comes from the theme. A few roles
+/// differ by brightness in the mockups, so they're resolved here once rather
+/// than re-guessed at each call site:
 ///   * marker core — the brightest neutral in each palette: `surface` (cream
 ///     #FAF3F0) in light, `onSurface` (#F3EBF0) in dark.
 ///   * marker ring — `secondaryContainer` (#EDDCF5) in light; dark leads with
