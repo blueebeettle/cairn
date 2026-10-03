@@ -1,34 +1,31 @@
-/// Cross-habit statistics for the Stats screen — SPEC.md §10.5 extended from
+/// Cross-habit statistics for the Stats screen: SPEC.md §10.5 extended from
 /// "one habit's numbers on its own detail screen" to "every active habit's
-/// numbers pooled together", the same relationship this file's functions
-/// have to `HabitStats` in `habit_streak.dart`.
+/// numbers pooled together", the same relationship these functions have to
+/// `HabitStats` in `habit_streak.dart`.
 ///
-/// Pure and database-free, exactly like `statistics.dart` (SPEC.md §7):
-/// every function here takes plain [HabitStatsInput] records — the repository
-/// converts its own `HabitSnapshot` (which depends on Drift) into these
-/// before calling in — and returns numbers. No query lives in this file.
+/// Pure and database-free like `statistics.dart` (SPEC.md §7): every function
+/// takes plain [HabitStatsInput] records (the repository converts its
+/// Drift-dependent `HabitSnapshot` into these) and returns numbers. No query
+/// lives here.
 ///
 /// **Streaks are never re-sliced by period.** A "current streak" answers "is
-/// the chain unbroken right now", which has nothing to do with which stats
-/// range happens to be selected. Reslicing it to "this week" would reset a
-/// 40-day streak to at most 7 just because of which tab was open. So
-/// [habitLeaderboard] carries `currentStreak`/`longestStreak` straight
-/// through from the habit's whole history — computed once by
-/// `HabitStats.computeStreaks`, exactly as the habit detail screen shows it.
-/// Only the rate-style numbers below (completion rate, weekday profile,
-/// check-off count, the activity heatmap) are restricted to a period — the
-/// same split SPEC.md §10.3 draws between streaks and rates.
+/// the chain unbroken right now", which has nothing to do with the selected
+/// stats range; reslicing it would reset a 40-day streak to at most 7 just
+/// because of which tab was open. So [habitLeaderboard] carries
+/// `currentStreak`/`longestStreak` straight through from the habit's whole
+/// history, computed once by `HabitStats.computeStreaks` as on the detail
+/// screen. Only the rate-style numbers (completion rate, weekday profile,
+/// check-off count, activity heatmap) are restricted to a period, the same
+/// split SPEC.md §10.3 draws between streaks and rates.
 library;
 
 import '../habits/habit_streak.dart';
 import '../time/time_service.dart';
 import 'statistics.dart' show StatsPeriod, HeatmapThresholds;
 
-/// One habit's resolved history, flattened for this engine.
-///
-/// Mirrors [SessionRecord] in `statistics.dart`: a small, Drift-free bag of
-/// values the repository builds from its own row types, so this file never
-/// has to import anything from `data/`.
+/// One habit's resolved history, flattened for this engine. Mirrors
+/// [SessionRecord] in `statistics.dart`: a small Drift-free bag of values the
+/// repository builds, so this file never imports from `data/`.
 class HabitStatsInput {
   const HabitStatsInput({
     required this.habitId,
@@ -64,24 +61,22 @@ class HabitStatsInput {
 // Pooled completion rate
 // ─────────────────────────────────────────────────────────────────────────
 
-/// SPEC.md §10.5's completion rate, pooled across every habit instead of
-/// kept per-habit — "how am I doing on habits generally", the habit
-/// counterpart of `CompletionRate` in `statistics.dart`.
+/// SPEC.md §10.5's completion rate, pooled across every habit: "how am I doing
+/// on habits generally", the counterpart of `CompletionRate` in
+/// `statistics.dart`.
 ///
-/// The same exclusions apply per scheduled day, not per habit: a neutral
-/// (a freeze) or pending (today, not yet due) day from ANY habit is left
-/// out of both sides, exactly as it would be if that one habit were asked
-/// alone. A habit with nothing scheduled in the period contributes nothing
-/// either way, rather than being excluded as a whole — so one demanding
-/// daily habit cannot drown out four easier ones in the pooled number.
+/// The exclusions apply per scheduled day, not per habit: a neutral (freeze) or
+/// pending (today, not yet due) day from ANY habit is left out of both sides,
+/// as it would be for that habit alone. A habit with nothing scheduled in the
+/// period contributes nothing rather than being excluded as a whole, so one
+/// demanding daily habit can't drown out four easier ones.
 ///
-/// Leaving `pending` out is right for every window this is asked about — a
-/// week or a quarter should not hold today's unfinished business against
-/// you, and a settled past day has no `pending` left in it. It is wrong for
-/// exactly one question: "how far through TODAY am I?", asked of the single
-/// day still open. There, excluding `pending` leaves only the habits already
-/// resolved, so the first tick reads as 100% however many are still to do.
-/// That question has its own function, [ofToday].
+/// Leaving `pending` out is right for every window asked about (a week or a
+/// quarter shouldn't hold today's unfinished business against you, and a
+/// settled past day has no `pending` left). It is wrong for exactly one
+/// question: "how far through TODAY am I?". There, excluding `pending` leaves
+/// only the habits already resolved, so the first tick reads as 100% however
+/// many remain. That question has its own function, [ofToday].
 class HabitCompletionRate {
   const HabitCompletionRate({required this.done, required this.eligible});
 
@@ -118,21 +113,20 @@ class HabitCompletionRate {
   }
 
   /// Same pooling as [of], but for the single day still in progress: a
-  /// still-open ([HabitDayOutcome.pending]) habit counts toward the
-  /// denominator as "not yet done" instead of being excluded, so progress
-  /// through today is visible before the day resolves. Every other outcome
-  /// (done/neutral/future) is treated exactly as [of] treats it.
+  /// still-open ([HabitDayOutcome.pending]) habit counts toward the denominator
+  /// as "not yet done" instead of being excluded, so progress through today is
+  /// visible before the day resolves. Every other outcome (done/neutral/future)
+  /// is treated as [of] treats it.
   ///
-  /// With four habits scheduled and one ticked off this is 1/4, where [of]
-  /// says 1/1 — the other three are `pending`, and [of] cannot see them.
+  /// With four habits scheduled and one ticked off this is 1/4, where [of] says
+  /// 1/1: the other three are `pending`, and [of] can't see them.
   ///
-  /// Still null-not-zero: a day with nothing scheduled, or with everything on
-  /// it excused, has no denominator and returns a null [rate]. A day with
-  /// habits scheduled and none done is a real 0.0.
+  /// Still null-not-zero: a day with nothing scheduled, or with everything
+  /// excused, has no denominator and returns a null [rate]. A day with habits
+  /// scheduled and none done is a real 0.0.
   ///
-  /// Never call this for a day other than today — for any settled day [of] is
-  /// already correct and already tested as such. [ofDay] makes that choice for
-  /// callers that draw a whole week.
+  /// Only call this for today; for any settled day [of] is already correct.
+  /// [ofDay] makes that choice for callers that draw a whole week.
   static HabitCompletionRate ofToday(
     Iterable<HabitStatsInput> habits,
     String todayLocalDate,
@@ -158,13 +152,12 @@ class HabitCompletionRate {
   }
 
   /// One day's pooled completion for a Mon–Sun chart: [ofToday] when [date] is
-  /// [todayLocalDate], [of] over that single day for every other.
+  /// [todayLocalDate], [of] over that single day otherwise.
   ///
-  /// The two charts that draw a week of these — the Habits screen's recap bars
-  /// (`buildWeeklyRecap`) and the Today screen's momentum strip — both go
-  /// through here, so they cannot disagree about a day. They show the same
-  /// week, and a bar at 25% over a pip at 100% for the same Tuesday would be
-  /// the kind of thing a user notices and stops trusting the app over.
+  /// The Habits screen's recap bars (`buildWeeklyRecap`) and the Today screen's
+  /// momentum strip both go through here, so they can't disagree about a day: a
+  /// bar at 25% over a pip at 100% for the same Tuesday is the kind of thing
+  /// that makes a user stop trusting the app.
   static HabitCompletionRate ofDay(
     Iterable<HabitStatsInput> habits,
     String date, {
@@ -287,18 +280,17 @@ int habitCheckOffsTotal(Iterable<HabitStatsInput> habits, StatsPeriod period) {
 // Freezes used
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Freezes applied across every habit inside [period] — the count of
+/// Freezes applied across every habit inside [period]: the count of
 /// `HabitDayOutcome.neutral` days, pooled.
 ///
 /// The period-scoped counterpart of `HabitSnapshot.excusedThisMonth`, which is
 /// fixed to the current calendar month because that is the window the monthly
-/// allowance is granted over. A "this week" card cannot use that number: early
-/// in a month it would report freezes spent in days the card is not showing,
-/// and late in one it would pool several weeks of them into a figure labelled
-/// "this week".
+/// allowance is granted over. A "this week" card can't use that number: early
+/// in a month it would report freezes from days the card isn't showing, and
+/// late in one it would pool several weeks into a figure labelled "this week".
 ///
-/// Same shape as [habitCheckOffsTotal] above — walk each habit's map, keep
-/// what falls inside the window, add it up.
+/// Same shape as [habitCheckOffsTotal]: walk each habit's map, keep what falls
+/// inside the window, add it up.
 int habitFreezeCountIn(Iterable<HabitStatsInput> habits, StatsPeriod period) {
   var total = 0;
   for (final habit in habits) {
@@ -333,12 +325,10 @@ class HabitLeaderboardEntry {
   final int longestStreak;
 }
 
-/// Active habits ranked by current streak, longest first.
-///
-/// Ties break on title, alphabetically — not on input order — so the list is
-/// deterministic between rebuilds rather than following whatever order
-/// [habits] happened to arrive in. Same reasoning as `TimeAllocation.of`'s
-/// tie-break in `statistics.dart`.
+/// Active habits ranked by current streak, longest first. Ties break on title,
+/// alphabetically, not on input order, so the list is deterministic between
+/// rebuilds (same reasoning as `TimeAllocation.of`'s tie-break in
+/// `statistics.dart`).
 List<HabitLeaderboardEntry> habitLeaderboard(Iterable<HabitStatsInput> habits) {
   final entries = [
     for (final habit in habits)
@@ -364,9 +354,9 @@ List<HabitLeaderboardEntry> habitLeaderboard(Iterable<HabitStatsInput> habits) {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Everything the Stats screen's habit cards need for one period, from one
-/// consistent read — the habit counterpart of `StatsBundle`. One object
-/// rather than several providers, so the numbers cannot disagree with each
-/// other the way two snapshots taken a moment apart could.
+/// consistent read: the habit counterpart of `StatsBundle`. One object rather
+/// than several providers, so the numbers can't disagree the way two snapshots
+/// taken a moment apart could.
 class HabitStatsBundle {
   const HabitStatsBundle({
     required this.period,
@@ -386,10 +376,10 @@ class HabitStatsBundle {
   /// Longest streak first. Empty when there are no active habits.
   final List<HabitLeaderboardEntry> leaderboard;
 
-  /// Whether the habits section has anything to show at all. Gates on
-  /// whether any habit exists, not on whether one has data in this
-  /// particular period — a habit created yesterday still deserves a card
-  /// that says "—" for this quarter, rather than the whole section vanishing.
+  /// Whether the habits section has anything to show. Gates on whether any
+  /// habit exists, not on whether one has data this period: a habit created
+  /// yesterday still deserves a card that says "—" for this quarter rather than
+  /// the section vanishing.
   bool get hasAnyData => activeHabitCount > 0;
 }
 
@@ -414,15 +404,15 @@ HabitStatsBundle buildHabitStatsBundle({
 /// One day's column in the recap's Mon–Sun mini chart.
 ///
 /// [rate] is that day's pooled completion, or null when nothing on it could be
-/// scored. Null is deliberately not zero: a day where every habit was excused,
-/// and a day where nothing was scheduled, are both "no claim to make" rather
-/// than "you did nothing".
+/// scored. Null is deliberately not zero: a day where every habit was excused
+/// and a day where nothing was scheduled are both "no claim to make", not "you
+/// did nothing".
 ///
 /// For a settled day that is [HabitCompletionRate.of] over the day. For today
 /// it is [HabitCompletionRate.ofToday], which counts a habit still to do as
-/// "not yet" rather than leaving it out — otherwise today's bar would leap
-/// from its empty stub to full on the first check-off, with every other habit
-/// still pending and invisible to the arithmetic.
+/// "not yet" rather than leaving it out; otherwise today's bar would leap from
+/// its empty stub to full on the first check-off, with every other habit still
+/// pending and invisible to the arithmetic.
 class WeeklyRecapDay {
   const WeeklyRecapDay({
     required this.date,
@@ -436,18 +426,17 @@ class WeeklyRecapDay {
   final bool isToday;
 
   /// Later in the week than today. Drawn as a placeholder rather than an empty
-  /// bar — a day that has not happened yet is not a day where nothing was
-  /// done, and drawing the two the same way would accuse the user of missing
-  /// Thursday on a Tuesday.
+  /// bar: a day that hasn't happened isn't a day where nothing was done, and
+  /// drawing them the same would accuse the user of missing Thursday on a
+  /// Tuesday.
   final bool isFuture;
 }
 
 /// Everything the Habits screen's "This week" card shows, from one read.
 ///
-/// Fixed to the current calendar week on purpose. The Stats screen's range
-/// picker drives `HabitStatsBundle`; this card always answers "this week", so
-/// it must not be wired to that picker — a card headed "This week" that
-/// silently followed a 90-day selection would be lying in its own title.
+/// Fixed to the current calendar week on purpose: the Stats range picker drives
+/// `HabitStatsBundle`, and a card headed "This week" that followed a 90-day
+/// selection would be lying in its own title.
 class WeeklyRecap {
   const WeeklyRecap({
     required this.weekStart,
@@ -467,9 +456,9 @@ class WeeklyRecap {
   /// This week's pooled rate; null when nothing this week could be scored.
   final double? completionRate;
 
-  /// Last week's, for the comparison line. Null for a first-ever week — the
-  /// card then shows the plain rate with no comparison rather than inventing
-  /// a baseline of zero to be "up" from.
+  /// Last week's, for the comparison line. Null for a first-ever week: the card
+  /// then shows the plain rate with no comparison rather than inventing a
+  /// baseline of zero to be "up" from.
   final double? priorCompletionRate;
 
   /// Seven entries, starting on the user's configured first day of the week
@@ -479,9 +468,9 @@ class WeeklyRecap {
   final List<WeeklyRecapDay> days;
 
   /// The highest current streak across active habits. Whole-history, never
-  /// re-sliced to the week — see this file's header — and the same number the
+  /// re-sliced to the week (see this file's header), and the same number the
   /// habit digest's active-streak line cites, so the card and the notification
-  /// cannot disagree about it.
+  /// can't disagree.
   final int bestStreak;
 
   final int habitsKept;
@@ -505,18 +494,18 @@ class WeeklyRecap {
 /// Builds the recap for the week beginning [weekStartLocalDate].
 ///
 /// Every number comes from the same in-memory [habits] list, so the seven
-/// per-day rates, the two weekly rates and the three tiles are all one
-/// consistent read — and the whole thing costs exactly the queries that built
-/// [habits], no matter how many periods it asks about.
+/// per-day rates, the two weekly rates and the three tiles are one consistent
+/// read, costing exactly the queries that built [habits] however many periods
+/// it asks about.
 ///
 /// The day bars and the week's headline rate deliberately answer different
-/// questions about today. A bar asks "how far through the day am I", so
-/// today's counts habits still to do ([HabitCompletionRate.ofToday]). The
-/// weekly rate asks "how has the week gone", and keeps
-/// [HabitCompletionRate.of]'s exclusion of today's open habits: an afternoon
-/// at 1 of 4 should not drag the week's headline down for a day that is not
-/// over. So today's bar can read 25% while the line above it reads a rate
-/// made only of settled days — that is the two questions, not a disagreement.
+/// questions about today. A bar asks "how far through the day am I", so today's
+/// counts habits still to do ([HabitCompletionRate.ofToday]). The weekly rate
+/// asks "how has the week gone" and keeps [HabitCompletionRate.of]'s exclusion
+/// of today's open habits: an afternoon at 1 of 4 shouldn't drag the headline
+/// down for a day that isn't over. So today's bar can read 25% while the line
+/// above it reads a rate of settled days only; that is the two questions, not a
+/// disagreement.
 WeeklyRecap buildWeeklyRecap({
   required List<HabitStatsInput> habits,
   required String todayLocalDate,
@@ -588,11 +577,10 @@ class HabitHeatmapCell {
 /// Fallback thresholds for a user with fewer than
 /// `HeatmapThresholds.minimumNonZeroDays` non-zero days of habit history.
 ///
-/// Scaled for a habit count, not a minute count — `HeatmapThresholds`'s own
-/// [HeatmapThresholds.fallback] (25/50/100/180) is calibrated for focus
-/// minutes and would make every real day of habit activity read as level 1.
-/// Most people run somewhere between one and half a dozen habits at once, so
-/// this fallback saturates by 5 rather than by 180.
+/// Scaled for a habit count, not minutes: `HeatmapThresholds.fallback`
+/// (25/50/100/180) is calibrated for focus minutes and would make every real
+/// day of habit activity read as level 1. Most people run between one and half
+/// a dozen habits at once, so this saturates by 5 rather than 180.
 const habitHeatmapFallbackThresholds = HeatmapThresholds(
   level1Max: 1,
   level2Max: 2,
@@ -602,15 +590,15 @@ const habitHeatmapFallbackThresholds = HeatmapThresholds(
   nonZeroDayCount: 0,
 );
 
-/// Distinct habits resolved `done`, per date, across [habits] — the input
-/// both [HeatmapThresholds.fromDailyMinutes] (for the legend's percentiles)
-/// and [buildHabitHeatmap] (for the cells) are built from. Kept as one map so
-/// the two never read a different day's count.
+/// Distinct habits resolved `done`, per date, across [habits]: the input both
+/// [HeatmapThresholds.fromDailyMinutes] (the legend's percentiles) and
+/// [buildHabitHeatmap] (the cells) are built from. One map, so the two never
+/// read a different day's count.
 ///
-/// Deliberately NOT restricted by [period] in the same sense as the rate
-/// functions above — the caller passes whatever window it wants counted
-/// (normally the trailing-365-day heatmap window, independent of the range
-/// picker, exactly as SPEC.md §4.13 fixes the focus heatmap's window).
+/// Deliberately NOT restricted by [period] as the rate functions above are: the
+/// caller passes whatever window it wants counted (normally the
+/// trailing-365-day heatmap window, independent of the range picker, as SPEC.md
+/// §4.13 fixes the focus heatmap's window).
 Map<String, int> habitDoneCountsByDate(
   Iterable<HabitStatsInput> habits,
   StatsPeriod window,
