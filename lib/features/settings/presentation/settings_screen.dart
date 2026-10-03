@@ -15,17 +15,9 @@ import '../../reminders/reminder_service.dart';
 import '../../tasks/presentation/archived_tasks_screen.dart';
 import '../../updates/presentation/check_for_updates_tile.dart';
 
-/// The Settings screen per POLISH §4 and §2.
-///
-/// Organized in 7 grouped sections:
-/// 1. Focus (Daily goal, Session length, Break length, Long break, Sessions before long break, explanations)
-/// 2. Reminders (Task reminders, Daily digest, Habit check-in)
-/// 3. Day & week (Day start offset + explanation, Week start)
-/// 4. Appearance (System / Light / Dark theme)
-/// 5. Notifications (Permission status & system settings link)
-/// 6. Data (Backup, Sync & Accounts, Archived tasks)
-/// 7. About (Version, Check for updates [Android only], from beetlebyte,
-///    Open-source licenses)
+/// The Settings screen per POLISH §4 and §2, in seven grouped sections: Focus,
+/// Reminders, Day & week, Appearance, Notifications, Data (backup, accounts,
+/// archived tasks) and About (version, check for updates on Android, licenses).
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -814,15 +806,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
 
 /// Prompts for the exact-alarm permission when Android is withholding it.
 ///
-/// Android 13+ starts `SCHEDULE_EXACT_ALARM` denied, and without it the OS is
-/// free to batch reminders under Doze — which is exactly the "arrives late"
-/// complaint. [ReminderService] still schedules inexact in that state, so this
-/// tile is an upgrade path rather than a gate, and it only appears when the
-/// permission is actually missing.
+/// Android 13+ starts `SCHEDULE_EXACT_ALARM` denied, and without it the OS may
+/// batch reminders under Doze, which is the "arrives late" complaint.
+/// [ReminderService] still schedules inexact in that state, so this tile is an
+/// upgrade path rather than a gate, and it only appears when the permission is
+/// actually missing.
 ///
 /// Surfaced here rather than requested silently at startup because granting it
-/// sends the user out to a system settings page; an unexplained jump there is
-/// worse than a late reminder.
+/// sends the user to a system settings page; an unexplained jump there is worse
+/// than a late reminder.
 class ExactAlarmTile extends ConsumerStatefulWidget {
   const ExactAlarmTile({super.key});
 
