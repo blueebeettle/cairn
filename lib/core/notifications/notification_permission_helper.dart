@@ -101,11 +101,11 @@ class NotificationPermissionHelper {
   /// Requests the Darwin alert/badge/sound grant through the notifications
   /// plugin.
   ///
-  /// This branch used to fall through to `return true`, so iOS reported
-  /// permission it had never asked for and every scheduled notification was
-  /// silently dropped. iOS only shows the system prompt once — later calls
-  /// return the standing decision rather than re-prompting — so this is safe
-  /// to call alongside the request made at plugin initialization.
+  /// Must not fall through to `return true`: iOS would report permission it
+  /// never asked for and every scheduled notification would be silently
+  /// dropped. iOS shows the system prompt only once and later calls return the
+  /// standing decision, so this is safe alongside the request made at plugin
+  /// initialization.
   static Future<bool> _requestDarwinPermission() async {
     final plugin = FlutterLocalNotificationsPlugin();
     try {
@@ -131,22 +131,21 @@ class NotificationPermissionHelper {
   /// has already been shown, so it never reappears on later creations.
   static const firstItemPromptedKey = 'notif_first_item_prompted';
 
-  /// Asks for notification permission the first time the user creates a task
-  /// or a habit.
+  /// Asks for notification permission the first time the user creates a task or
+  /// a habit.
   ///
-  /// Reminders are not an opt-in extra the user goes looking for: a new dated
-  /// task is given the default reminder offset the moment it is created, and
-  /// a habit with a reminder time schedules one straight away. Waiting until
-  /// someone opens the reminder editor meant that first reminder could be
-  /// scheduled against a permission nobody had asked for, and it would simply
-  /// never fire. Asking once, right after there is finally something worth
-  /// being reminded about, is both the earliest useful moment and the easiest
-  /// one to say yes to.
+  /// Reminders aren't an opt-in extra: a new dated task gets the default
+  /// reminder offset immediately, and a habit with a reminder time schedules
+  /// one straight away. Asking only when the reminder editor opened meant that
+  /// first reminder was scheduled against a permission nobody had asked for,
+  /// and never fired. Asking once, right after there is something to be
+  /// reminded about, is the earliest useful moment and the easiest to say yes
+  /// to.
   ///
-  /// Only ever prompts once — the flag is persisted, so declining is
-  /// remembered across restarts and this never becomes a nag. Reminder
-  /// editors and the timer still call [ensureNotificationPermission]
-  /// directly, which is the "and when necessary" half.
+  /// Prompts once only; the flag is persisted, so declining is remembered
+  /// across restarts. Reminder editors and the timer still call
+  /// [ensureNotificationPermission] directly, which is the "and when necessary"
+  /// half.
   static Future<void> ensureOnFirstItemCreated(
     BuildContext context,
     SettingsRepository settingsRepo,
