@@ -19,17 +19,16 @@ import 'features/backup/domain/supabase_backup_service.dart';
 import 'features/reminders/reminder_service.dart';
 import 'features/widgets/home_screen_widget_service.dart';
 
-/// Startup is deliberately split in two.
+/// Startup is deliberately split in two. Everything in [main] runs before the
+/// first frame, so it must stay fast: opening the database, resolving the
+/// device id and timezone, and wiring up the notification plugin/channel
+/// (cheap: no database scan, no network). Everything slow and deferrable
+/// (reconciling every task's and habit's reminders, and Supabase's
+/// network-touching initialize()) moves into [_finishStartup], kicked off
+/// *after* runApp() so the UI paints immediately. Previously every step ran in
+/// one sequential chain before anything rendered, which made the app take 2-3s
+/// to open.
 ///
-/// Everything in [main] below runs before the first frame, so it must stay
-/// fast: opening the database, resolving the device id and timezone, and
-/// wiring up the notification plugin/channel (cheap — no database scan, no
-/// network). Everything slow and deferrable — reconciling every task's and
-/// habit's reminders, and Supabase's network-touching initialize() — moves
-/// into [_finishStartup], kicked off *after* runApp() so the UI paints
-/// immediately instead of sitting on a blank screen for however long that
-/// work takes. This is the fix for the app taking 2-3s to open: previously
-/// every step below ran in one sequential chain before anything rendered.
 /// Result of independent bootstrap steps run concurrently at startup.
 class StartupBootstrapResult {
   const StartupBootstrapResult({
@@ -99,12 +98,10 @@ void main() async {
   final deviceId = bootstrap.deviceId;
   final dayStartOffset = bootstrap.dayStartOffset;
 
-  // The first-run tutorial's flag. Deliberately its own read *after*
-  // runStartupBootstrap rather than a fifth entry in its Future.wait: the
-  // bootstrap's steps and timing are left exactly as the startup
-  // parallelisation made them, and this is a separate decision about which
-  // root to show. One indexed lookup on a database the bootstrap already
-  // opened.
+  // The first-run tutorial's flag: its own read *after* runStartupBootstrap
+  // rather than a fifth entry in its Future.wait, so the bootstrap's steps and
+  // timing stay as the startup parallelisation made them. One indexed lookup on
+  // a database the bootstrap already opened.
   final onboardingCompleted = await loadOnboardingCompleted(settingsRepo);
 
   final timeService = TimeService(
@@ -159,15 +156,14 @@ void main() async {
   ));
 }
 
-/// The slow, deferrable half of startup — see the [main] doc comment.
+/// The slow, deferrable half of startup; see the [main] doc comment.
 ///
-/// Reconciling reminders touches every open task and habit in the database;
-/// Supabase.initialize() makes a network call. Neither gates the first
-/// frame. [SupabaseBackupService.ensureInitialized] already re-initializes
-/// Supabase defensively (and treats "already initialized" as success) before
-/// any backup/auth action, so a user reaching the Backup screen before this
-/// finishes is already handled — this isn't a new risk this split
-/// introduces.
+/// Reconciling reminders touches every open task and habit;
+/// Supabase.initialize() makes a network call. Neither gates the first frame.
+/// [SupabaseBackupService.ensureInitialized] already re-initializes Supabase
+/// defensively (treating "already initialized" as success) before any
+/// backup/auth action, so a user reaching the Backup screen before this
+/// finishes is already handled.
 Future<void> _finishStartup({
   required ReminderService reminderService,
   required SettingsRepository settingsRepo,
