@@ -26,17 +26,18 @@ import 'reminder_copy.dart';
 /// Service managing scheduled task and habit reminder notifications per
 /// PROMPT-reminders.md and SPEC.md §10.4/§11.
 ///
-/// Owns every call into [FlutterLocalNotificationsPlugin]; nothing else touches the plugin.
+/// Owns every call into [FlutterLocalNotificationsPlugin]; nothing else touches
+/// the plugin.
 ///
-/// Three kinds of notification come from here, each with its own id space:
+/// These kinds of notification come from here, each with its own id space:
 /// - Task countdown reminders: one per live `task_reminder_offsets` row, id
 ///   allocated from the shared counter (§5) and stored on the row.
 /// - Habit reminders: one per live `habit_reminder_times` row, same counter.
 /// - The daily task digest: at most
 ///   [ReminderConfigRepository.maxRemindersPerItem] plus one notifications at
-///   fixed ids 1..6 — a reserved low band, below where the shared counter
-///   starts (1000), so there is nothing to persist: the Nth configured digest
-///   time is always id `1 + N`.
+///   fixed ids 1..6, a reserved low band below where the shared counter starts
+///   (1000), so nothing is persisted: the Nth configured digest time is always
+///   id `1 + N`.
 /// - The daily habit digest: one notification at fixed id 7, for the same
 ///   reason.
 class ReminderService {
@@ -110,8 +111,8 @@ class ReminderService {
 
   /// The habit digest's fixed id, immediately after the task digest's band and
   /// far below where the shared counter starts (1000). Fixed rather than
-  /// allocated for the same reason the task digest's ids are: there is then
-  /// nothing to persist, and cancel-then-reschedule is always safe.
+  /// allocated, as for the task digest, so nothing needs persisting and
+  /// cancel-then-reschedule is always safe.
   static const int habitDigestNotificationId = 7;
 
   /// Settings key holding the last habit-digest variant index used, so the
@@ -135,7 +136,7 @@ class ReminderService {
   /// Whether the OS will honour an exact alarm right now.
   ///
   /// Optimistic by default: everything schedules exact until a platform check
-  /// says otherwise, so a device that cannot answer (iOS, tests, Android below
+  /// says otherwise, so a device that can't answer (iOS, tests, Android below
   /// 12 where exact alarms need no grant) still gets exact mode. Refreshed by
   /// [refreshExactAlarmCapability] during [initialize] and after a permission
   /// request.
@@ -149,11 +150,10 @@ class ReminderService {
   @visibleForTesting
   set exactAlarmsAllowedForTest(bool value) => _exactAlarmsAllowed = value;
 
-  /// The schedule mode every `zonedSchedule` in this service uses.
-  ///
-  /// Falling back to [AndroidScheduleMode.inexactAllowWhileIdle] when the
-  /// exact-alarm permission is absent is the whole point: a declined
-  /// permission must degrade delivery, never drop the reminder.
+  /// The schedule mode every `zonedSchedule` in this service uses. Falling back
+  /// to [AndroidScheduleMode.inexactAllowWhileIdle] without the exact-alarm
+  /// permission is the point: a declined permission must degrade delivery,
+  /// never drop the reminder.
   AndroidScheduleMode get scheduleMode => _exactAlarmsAllowed
       ? AndroidScheduleMode.exactAllowWhileIdle
       : AndroidScheduleMode.inexactAllowWhileIdle;
@@ -179,9 +179,9 @@ class ReminderService {
   /// Asks the user for the exact-alarm permission, then reschedules.
   ///
   /// Surfaced from the reminders settings screen rather than fired silently,
-  /// because on Android 13+ this sends the user out to a system settings page
-  /// and an unexplained jump there is worse than a late reminder. Returns
-  /// whether exact alarms are available afterwards.
+  /// because on Android 13+ this sends the user to a system settings page and
+  /// an unexplained jump there is worse than a late reminder. Returns whether
+  /// exact alarms are available afterwards.
   ///
   /// Reconciles either way: granting upgrades already-pending reminders from
   /// inexact to exact, and declining leaves them scheduled inexact rather than
@@ -221,12 +221,12 @@ class ReminderService {
       (() async {
         const androidSettings =
             AndroidInitializationSettings('@mipmap/ic_launcher');
-        // iOS/macOS were previously absent entirely, which left the plugin
-        // unconfigured on Darwin and every notification silently dropped. The
-        // permission flags here are this plugin's documented default route:
-        // requesting at initialization. `NotificationPermissionHelper` also asks
-        // explicitly, which is idempotent — iOS returns the existing decision
-        // rather than re-prompting.
+        // Darwin must be configured or the plugin is unconfigured there and
+        // every notification is silently dropped. The permission flags are the
+        // plugin's documented default route: requesting at initialization.
+        // `NotificationPermissionHelper` also asks explicitly, which is
+        // idempotent: iOS returns the existing decision rather than
+        // re-prompting.
         final darwinSettings = DarwinInitializationSettings(
           requestAlertPermission: true,
           requestBadgePermission: true,
@@ -295,10 +295,10 @@ class ReminderService {
   /// Cancels every existing countdown reminder for [task] and reschedules
   /// whichever configured offsets are still eligible.
   ///
-  /// One task can now have several live `task_reminder_offsets` rows, so
-  /// this always cancels all of them first — a task that went all-day, was
-  /// completed, or lost its due date must not keep a stale id firing — then,
-  /// only if still eligible, reschedules each row independently.
+  /// A task can have several live `task_reminder_offsets` rows, so this always
+  /// cancels all of them first (a task that went all-day, was completed, or
+  /// lost its due date must not keep a stale id firing), then reschedules each
+  /// eligible row independently.
   Future<void> scheduleFor(Task task) async {
     final offsets = await _reminderConfig.taskReminderOffsets(task.id);
     for (final row in offsets) {
@@ -400,9 +400,9 @@ class ReminderService {
               t.dueAt.isNotNull()))
         .get();
 
-    // Scheduled in parallel rather than one at a time — with dozens of open
-    // dated tasks this loop was the single biggest contributor to startup
-    // lag. One bad row must not stop every other task from reminding.
+    // Scheduled in parallel rather than one at a time: with dozens of open
+    // dated tasks this loop was the biggest contributor to startup lag. One bad
+    // row must not stop every other task from reminding.
     await Future.wait(openTasks.map((task) async {
       try {
         await scheduleFor(task);
@@ -421,9 +421,8 @@ class ReminderService {
   /// Routes a tapped notification: `task:<id>`, `habit:<id>`, `digest` or
   /// `habit_digest`.
   ///
-  /// `habit_digest` is checked before the `habit:` prefix would ever match it
-  /// — it has no colon, so the two cannot collide, but the ordering is worth
-  /// keeping deliberate if either string changes.
+  /// `habit_digest` has no colon, so it can't collide with the `habit:` prefix,
+  /// but keep the ordering deliberate if either string changes.
   void _dispatchPayload(String? payload) {
     if (payload == null) return;
     if (payload.startsWith('task:')) {
@@ -455,12 +454,11 @@ class ReminderService {
   /// Cancels every existing reminder for [habit] and reschedules whichever
   /// configured times are still eligible.
   ///
-  /// One pending notification per configured time, for the next *scheduled*
-  /// day that is not already complete — never a plain daily repeat.
-  /// Reminding someone about a Mon/Wed/Fri habit on Sunday is how
-  /// notifications get switched off (SPEC §10.4). Because each is one-shot,
-  /// the next occurrence is scheduled on every check-off, every edit, on
-  /// resume and in [reconcileAll].
+  /// One pending notification per configured time, for the next *scheduled* day
+  /// not already complete, never a plain daily repeat: reminding someone about
+  /// a Mon/Wed/Fri habit on Sunday is how notifications get switched off (SPEC
+  /// §10.4). Because each is one-shot, the next occurrence is scheduled on
+  /// every check-off, every edit, on resume and in [reconcileAll].
   Future<void> scheduleForHabit(Habit habit) async {
     // Re-read: the caller's row may predate a notification id allocated by an
     // earlier call, and cancelling with a stale id would leave a duplicate.
@@ -534,14 +532,13 @@ class ReminderService {
   /// When [snapshot]'s next reminder at [minutes] past midnight should fire,
   /// strictly after [now].
   ///
-  /// Today qualifies only while it is still pending — a habit already done,
-  /// or frozen, is skipped to its next scheduled day. Any fire
-  /// time not after [now] steps on to the following scheduled day, so this
-  /// never returns the past.
+  /// Today qualifies only while still pending: a habit already done, or frozen,
+  /// is skipped to its next scheduled day. Any fire time not after [now] steps
+  /// to the following scheduled day, so this never returns the past.
   ///
   /// The reminder time is read against the LOGICAL day (SPEC §1.2). With the
-  /// day starting at 04:00, a 01:30 reminder for Monday's habit fires at
-  /// 01:30 on the Tuesday calendar date, which is still Monday's logical day.
+  /// day starting at 04:00, a 01:30 reminder for Monday's habit fires at 01:30
+  /// on the Tuesday calendar date, which is still Monday's logical day.
   tz.TZDateTime? nextHabitFireTime(
     HabitSnapshot snapshot,
     tz.TZDateTime now,
@@ -618,37 +615,35 @@ class ReminderService {
 
   // ───────────────────────────────────────────────────────────────── digest
 
-  /// Cancels and, if configured, reschedules the daily due-list digest — a
-  /// single notification summarizing what's due today and overdue, for
-  /// all-day tasks that have no specific time to count down to.
+  /// Cancels and, if configured, reschedules the daily due-list digest: a
+  /// single notification summarizing what's due today and overdue, for all-day
+  /// tasks that have no specific time to count down to.
   ///
-  /// Fixed low notification ids (1..[_maxDigestSlots]) mean nothing about the
-  /// digest needs to be persisted: the Nth configured time is always id
-  /// `1 + N`, cancel-and-reschedule is always safe, and the id space never
-  /// collides with the shared counter (starts at 1000).
+  /// Fixed low notification ids (1..[_maxDigestSlots]) mean nothing needs
+  /// persisting: the Nth configured time is always id `1 + N`,
+  /// cancel-and-reschedule is always safe, and the id space never collides with
+  /// the shared counter (starts at 1000).
   ///
-  /// The body reflects due/overdue counts *as of this call*, not as of the
-  /// moment it actually fires — the same limitation the per-task reminders
-  /// already have. Reconciling runs often enough (startup, every edit, every
-  /// resume, the day-rollover watch) that this stays close enough in
-  /// practice.
+  /// The body reflects due/overdue counts *as of this call*, not as of when it
+  /// fires, the same limitation the per-task reminders have. Reconciling runs
+  /// often enough (startup, every edit, every resume, the day-rollover watch)
+  /// that this stays close enough in practice.
   ///
   /// **Recurrence.** Scheduled with `matchDateTimeComponents:
   /// DateTimeComponents.time`, so the OS repeats it daily at that clock time.
   /// Per the plugin's documentation the [tz.TZDateTime] passed as
-  /// `scheduledDate` is then only a seed — the plugin fires at the next
-  /// matching wall-clock time, which may be earlier than the date given. That
-  /// is why computing "today, or tomorrow if passed" below is harmless: either
-  /// seed lands on the same daily series.
+  /// `scheduledDate` is then only a seed: the plugin fires at the next matching
+  /// wall-clock time, which may be earlier than the date given. That is why
+  /// computing "today, or tomorrow if passed" below is harmless: either seed
+  /// lands on the same daily series.
   ///
   /// **Across a timezone change**, the series follows the wall clock of the
-  /// zone the notification was scheduled in, so a device that travels keeps
-  /// firing at the old zone's instant until something reschedules. It cannot
-  /// double-fire or skip a day — the repeat is one series at a fixed interval,
-  /// not a re-derivation per day. The existing reconcile call sites (startup
-  /// and settings changes) re-seed it against [tz.local], which [initialize]
-  /// has just re-pointed at the current zone, so the drift resolves on next
-  /// launch rather than persisting.
+  /// zone it was scheduled in, so a device that travels keeps firing at the old
+  /// zone's instant until something reschedules. It cannot double-fire or skip
+  /// a day: the repeat is one series at a fixed interval, not a re-derivation
+  /// per day. The existing reconcile call sites (startup and settings changes)
+  /// re-seed it against [tz.local], which [initialize] has just re-pointed at
+  /// the current zone, so the drift resolves on next launch.
   Future<void> reconcileDigest() async {
     for (var i = 0; i < _maxDigestSlots; i++) {
       await _plugin.cancel(id: _digestNotificationId(i));
@@ -699,11 +694,11 @@ class ReminderService {
         scheduledDate: fireTz,
         notificationDetails: digestDetails,
         androidScheduleMode: scheduleMode,
-        // Daily recurrence handed to the OS. Previously this was a one-shot at
-        // "today at HH:MM, or tomorrow if passed", which only re-armed when
-        // something called back into this method — so a user who did not open
-        // the app simply stopped getting digests. Matching on time alone makes
-        // the OS repeat it every day at that clock time regardless.
+        // Daily recurrence handed to the OS. A one-shot at "today at HH:MM, or
+        // tomorrow if passed" only re-armed when something called back into
+        // this method, so a user who didn't open the app simply stopped getting
+        // digests. Matching on time alone makes the OS repeat it every day
+        // regardless.
         matchDateTimeComponents: DateTimeComponents.time,
         payload: 'digest',
       );
@@ -743,23 +738,22 @@ class ReminderService {
 
   // ─────────────────────────────────────────────────────── habit digest
 
-  /// Cancels and, if configured, reschedules the once-daily habit digest — a
+  /// Cancels and, if configured, reschedules the once-daily habit digest: a
   /// single "Cairn" notification whose one line is chosen from three tones by
   /// [selectHabitDigestTone].
   ///
-  /// Opt-in and off by default, the same posture as the task digest: a new
-  /// install gets no unrequested notifications. One configurable time rather
-  /// than the task digest's list — a habit nudge is a single daily prompt, and
-  /// a second one on the same day would be the same sentence again.
+  /// Opt-in and off by default, like the task digest, so a new install gets no
+  /// unrequested notifications. One configurable time rather than the task
+  /// digest's list: a habit nudge is a single daily prompt, and a second one
+  /// the same day would be the same sentence again.
   ///
   /// Fixed id [habitDigestNotificationId] means nothing about the schedule has
   /// to be persisted; cancel-then-reschedule is always safe.
   ///
-  /// The body reflects habit state *as of this call*, not as of the moment it
-  /// actually fires — the same limitation the task digest and the per-task
-  /// reminders already have. Reconciling runs often enough (startup, every
-  /// reminder-setting change, the day-rollover watch) that this stays close
-  /// enough in practice.
+  /// The body reflects habit state *as of this call*, not as of when it fires,
+  /// the same limitation as the task digest and per-task reminders; reconciling
+  /// runs often enough (startup, every reminder-setting change, the
+  /// day-rollover watch) that this stays close enough in practice.
   Future<void> reconcileHabitDigest() async {
     await _plugin.cancel(id: habitDigestNotificationId);
 
@@ -825,27 +819,22 @@ class ReminderService {
     );
   }
 
-  /// A variant index for [tone] that is not the one used last time.
+  /// A variant index for [tone] that is not the one used last time. Picks
+  /// uniformly among the rest; with a single-variant pool there is no "rest",
+  /// so it repeats rather than looping forever.
   ///
-  /// Picks uniformly among the rest. With a single-variant pool there is no
-  /// "rest" to pick from, so it repeats rather than looping forever looking
-  /// for an alternative that does not exist.
-  ///
-  /// Only deduplicates within a pool. A tone change already produces a
-  /// completely different sentence, so index 1 of the freeze pool following
-  /// index 1 of the streak pool is not a repeat in any sense the reader would
-  /// notice.
+  /// Only deduplicates within a pool: a tone change already produces a
+  /// different sentence, so index 1 of the freeze pool following index 1 of the
+  /// streak pool is not a repeat the reader would notice.
   Future<int> _nextHabitDigestIndex(HabitDigestTone tone) =>
       _nextVariantIndex(habitDigestLastIndexKey, habitDigestVariantCount(tone));
 
-  /// A variant index for the pool recorded under [lastIndexKey] that is not
-  /// the one used last time.
-  ///
-  /// The generalisation of [_nextHabitDigestIndex] onto the task-reminder,
-  /// habit-reminder and task-digest pools, so all four share one anti-repeat
-  /// rule instead of three near-copies. Picks uniformly among the
-  /// alternatives; with a single-variant pool there is no alternative, so it
-  /// repeats rather than looping forever looking for one.
+  /// A variant index for the pool recorded under [lastIndexKey] that is not the
+  /// one used last time. Generalises [_nextHabitDigestIndex] to the
+  /// task-reminder, habit-reminder and task-digest pools, so all four share one
+  /// anti-repeat rule instead of three near-copies. Picks uniformly among the
+  /// alternatives; with a single-variant pool it repeats rather than looping
+  /// forever.
   Future<int> _nextVariantIndex(String lastIndexKey, int count) async {
     if (count <= 1) return 0;
 

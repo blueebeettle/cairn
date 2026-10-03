@@ -1,10 +1,7 @@
 /// Channel identity, action ids and [NotificationDetails] for every reminder
-/// notification.
-///
-/// Lives apart from `ReminderService` because the background action handler
-/// needs the same constants and runs in an isolate that must not import the
-/// service (it owns a Riverpod provider and a live plugin). Both sides import
-/// this instead.
+/// notification. Lives apart from `ReminderService` because the background
+/// action handler needs the same constants and runs in an isolate that must not
+/// import the service (it owns a Riverpod provider and a live plugin).
 library;
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';

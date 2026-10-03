@@ -1,25 +1,21 @@
 /// Copy selection for the once-daily habit digest notification.
 ///
-/// Pure and database-free, the same split this codebase already draws between
-/// `core/stats/statistics.dart` (arithmetic, no Drift) and
-/// `data/repositories/stats_repository.dart` (queries): everything here takes
-/// plain values and returns a string, so the wording and the priority order
-/// can be tested without a database, a plugin or a clock.
+/// Pure and database-free, like `core/stats/statistics.dart`: everything takes
+/// plain values and returns a string, so wording and priority order can be
+/// tested without a database, plugin or clock.
 ///
-/// **Randomness lives in the caller.** `ReminderService` picks which variant
-/// within a tone's pool to use and remembers the last one, then passes the
-/// index in. Nothing in this file calls `Random`, so the same inputs always
-/// produce the same sentence.
+/// **Randomness lives in the caller.** `ReminderService` picks the variant
+/// within a tone's pool, remembers the last one, and passes the index in.
+/// Nothing here calls `Random`, so the same inputs always produce the same
+/// sentence.
 library;
 
 import '../../core/habits/habit_streak.dart';
 
-/// One habit's state, reduced to just what the digest reads.
-///
-/// Deliberately not `HabitStatsInput` from `habit_statistics.dart`: that type
-/// carries a title, an icon, a colour and a full entry map, none of which a
-/// notification body mentions, and requiring it would make `ReminderService`
-/// fabricate four fields it has no use for.
+/// One habit's state, reduced to just what the digest reads. Not
+/// `HabitStatsInput`: that carries a title, icon, colour and full entry map the
+/// notification body never mentions, and requiring it would make
+/// `ReminderService` fabricate four fields it has no use for.
 class HabitDigestInput {
   const HabitDigestInput({
     required this.currentStreak,
@@ -97,28 +93,23 @@ int habitDigestVariantCount(HabitDigestTone tone) => _pools[tone]!.length;
 
 /// Which tone today's digest should take, or null when it should not fire.
 ///
-/// **Priority order, most specific first** — the first match wins and the rest
-/// are not consulted:
+/// **Priority order, most specific first**; the first match wins:
 ///
-/// 1. [HabitDigestTone.freezeUsed] — any habit's yesterday was excused. This
-///    outranks everything because it is the only line that reassures rather
-///    than nudges, and a user who just lost a day is the one most likely to
-///    read a nudge as nagging.
-/// 2. [HabitDigestTone.weekRollover] — today begins the week *and* something
-///    is scheduled. A "new week, 0 habits waiting" line would be worse than
-///    silence, so the count gate is part of the condition rather than a
-///    formatting problem left to the template.
-/// 3. [HabitDigestTone.activeStreak] — there is a streak to cite *and*
-///    something still open. Both halves are required: with nothing open the
-///    line would read "0 habits are still open", which is not a nudge, it is
-///    a status report the user did not ask for. Silence is better.
-/// 4. Nothing — no active habits, or a day where every condition above came
-///    up empty. Same principle the task digest already follows: an empty
-///    digest is worse than no digest.
+/// 1. [HabitDigestTone.freezeUsed]: any habit's yesterday was excused. Outranks
+///    everything because it is the only line that reassures rather than nudges,
+///    and a user who just lost a day is the one most likely to read a nudge as
+///    nagging.
+/// 2. [HabitDigestTone.weekRollover]: today begins the week *and* something is
+///    scheduled. "New week, 0 habits waiting" would be worse than silence, so
+///    the count gate is part of the condition rather than left to the template.
+/// 3. [HabitDigestTone.activeStreak]: there is a streak to cite *and* something
+///    still open. Both are required: with nothing open the line would read "0
+///    habits are still open", a status report nobody asked for.
+/// 4. Nothing: no active habits, or every condition above came up empty. As
+///    with the task digest, an empty digest is worse than no digest.
 ///
-/// [startOfWeekLocalDate] is passed in rather than derived, because which day
-/// a week starts on is a user setting that lives on `TimeService`, and this
-/// file does not take a `TimeService`.
+/// [startOfWeekLocalDate] is passed in because which day a week starts on is a
+/// user setting on `TimeService`, and this file doesn't take a `TimeService`.
 HabitDigestTone? selectHabitDigestTone({
   required List<HabitDigestInput> habits,
   required String todayLocalDate,
@@ -146,12 +137,9 @@ HabitDigestTone? selectHabitDigestTone({
 }
 
 /// The digest's body for today, or null when it should not fire.
-///
 /// [templateIndex] chooses the variant within the selected tone's pool and is
-/// wrapped into range, so any integer is safe to pass — the caller does not
-/// have to know how deep a pool is to call this correctly.
-///
-/// See [selectHabitDigestTone] for the priority order.
+/// wrapped into range, so any integer is safe to pass. See
+/// [selectHabitDigestTone] for the priority order.
 HabitDigestContent? selectHabitDigestBody({
   required List<HabitDigestInput> habits,
   required String todayLocalDate,
@@ -185,11 +173,10 @@ HabitDigestContent? selectHabitDigestBody({
   );
 }
 
-/// Substitutes `{s}`, `{nHabits}` and `{nHabitsAre}`.
-///
-/// The noun and its verb travel together because English makes them agree:
-/// "1 habit is waiting" against "3 habits are waiting". Keeping the pair in
-/// one placeholder is what stops a template from reading "1 habits are".
+/// Substitutes `{s}`, `{nHabits}` and `{nHabitsAre}`. The noun and its verb
+/// travel together because English makes them agree ("1 habit is waiting" vs "3
+/// habits are waiting"); one placeholder for the pair is what stops a template
+/// reading "1 habits are".
 String _render(String template, {required int count, required int streak}) {
   final nHabits = '$count ${count == 1 ? 'habit' : 'habits'}';
   return template

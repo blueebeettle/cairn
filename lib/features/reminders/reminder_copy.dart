@@ -1,13 +1,11 @@
 /// Copy pools for task reminders, habit reminders and the task digest.
 ///
-/// Same split as `habit_digest_copy.dart`, which this file deliberately
-/// mirrors: pure and database-free, everything takes plain values and returns
-/// a string, so wording can be tested without a database, a plugin or a clock.
+/// Mirrors `habit_digest_copy.dart`: pure and database-free, so wording can be
+/// tested without a database, plugin or clock.
 ///
 /// **Randomness lives in the caller.** `ReminderService` picks the variant
-/// index and persists the last one used per pool, then passes the index in.
-/// Nothing here calls `Random`, so the same inputs always produce the same
-/// sentence.
+/// index, persists the last one used per pool, and passes the index in. Nothing
+/// here calls `Random`.
 library;
 
 /// Wraps any integer into `[0, length)`.
@@ -18,12 +16,10 @@ int _wrap(int index, int length) => ((index % length) + length) % length;
 
 // ───────────────────────────────────────────────────── task reminders
 
-/// Short lead-ins for a task reminder body.
-///
-/// The due time and project name are load-bearing on a time-sensitive
-/// reminder, so they are never varied — only this prefix is. Every line is
-/// kept to a couple of words for the same reason: the body still has to read
-/// as "when and where", not as a greeting.
+/// Short lead-ins for a task reminder body. The due time and project name are
+/// load-bearing on a time-sensitive reminder, so only this prefix varies, and
+/// each line is kept to a couple of words so the body still reads as "when and
+/// where", not a greeting.
 const List<String> _taskLeadIns = [
   'Coming up',
   'Next up',
@@ -68,12 +64,10 @@ enum HabitReminderTone {
   dueToday,
 }
 
-/// The copy pools, one per tone.
-///
-/// Placeholders: `{s}` is the streak length, `{target}` the target count
-/// already joined to its unit label (e.g. "3 glasses", or just "3" when the
-/// habit has no unit). Pools are three deep so the anti-repeat rule always has
-/// somewhere to go, the same depth `habit_digest_copy.dart` uses.
+/// The copy pools, one per tone. Placeholders: `{s}` is the streak length and
+/// `{target}` the target count already joined to its unit label (e.g. "3
+/// glasses", or just "3" without a unit). Pools are three deep so the
+/// anti-repeat rule always has somewhere to go, as in `habit_digest_copy.dart`.
 const Map<HabitReminderTone, List<String>> _habitPools = {
   HabitReminderTone.streak: [
     'Keep your {s}-day streak going',
@@ -96,10 +90,8 @@ const Map<HabitReminderTone, List<String>> _habitPools = {
 int habitReminderVariantCount(HabitReminderTone tone) =>
     _habitPools[tone]!.length;
 
-/// Which tone a habit reminder should take.
-///
-/// Same precedence the previous static branch used, kept deliberately so this
-/// change is a copy change and not a behaviour change.
+/// Which tone a habit reminder should take, by the precedence documented on
+/// [HabitReminderTone].
 HabitReminderTone selectHabitReminderTone({
   required int currentStreak,
   required int targetCount,
@@ -130,11 +122,9 @@ String habitReminderBody({
 
 // ─────────────────────────────────────────────────────── task digest
 
-/// Title/body pairs for the daily task digest.
-///
-/// `{counts}` is the already-joined count phrase ("3 due today · 1 overdue"),
-/// which stays intact for the same reason the task reminder's time does: it is
-/// the information the digest exists to deliver. Only the framing varies.
+/// Title/body pairs for the daily task digest. `{counts}` is the already-joined
+/// count phrase ("3 due today · 1 overdue"), kept intact because it is the
+/// information the digest exists to deliver; only the framing varies.
 const List<(String, String)> _taskDigestPool = [
   ('Today', '{counts}'),
   ("Here's today", '{counts}'),

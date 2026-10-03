@@ -1,11 +1,10 @@
 /// Handling for the "Mark done" / "Snooze 15 min" buttons on reminders.
 ///
 /// An action button can be tapped while the app is foregrounded, backgrounded
-/// or fully terminated, so the work has to be expressible without a Riverpod
-/// container. [applyNotificationAction] therefore takes an open [AppDatabase]
-/// and builds throwaway repositories over it — the same shape
-/// `home_screen_widget_service.dart`'s background callbacks already use, and
-/// for the same reason: the database is the shared source of truth and the app
+/// or terminated, so the work can't need a Riverpod container.
+/// [applyNotificationAction] takes an open [AppDatabase] and builds throwaway
+/// repositories over it, as `home_screen_widget_service.dart`'s background
+/// callbacks do: the database is the shared source of truth and the app
 /// re-reads it on resume.
 ///
 /// [notificationActionBackgroundHandler] is the terminated-app entry point the
@@ -59,12 +58,11 @@ enum NotificationActionResult {
   ignored,
 }
 
-/// Parses a notification payload into a target, or null if it is not one.
-///
+/// Parses a notification payload into a target, or null if it isn't one.
 /// Deliberately strict: the payload is the only untrusted input reaching this
-/// path, so anything that is not exactly a known prefix followed by a
-/// non-empty id is rejected rather than coerced. Digest payloads (`digest`,
-/// `habit_digest`) legitimately parse to null — they carry no actions.
+/// path, so anything other than a known prefix followed by a non-empty id is
+/// rejected rather than coerced. Digest payloads (`digest`, `habit_digest`)
+/// parse to null because they carry no actions.
 NotificationTarget? parseNotificationTarget(String? payload) {
   if (payload == null) return null;
   const prefixes = {
@@ -80,15 +78,13 @@ NotificationTarget? parseNotificationTarget(String? payload) {
   return null;
 }
 
-/// Applies [actionId] to whatever [payload] names, against [db].
+/// Applies [actionId] to whatever [payload] names, against [db]. Returns
+/// [NotificationActionResult.ignored] rather than throwing for every failure
+/// mode (missing row, deleted row, malformed payload, unknown action id): a
+/// reminder's button must never crash the app or the background isolate.
 ///
-/// Returns [NotificationActionResult.ignored] rather than throwing for every
-/// failure mode — a missing row, a deleted row, a malformed payload or an
-/// unknown action id. A reminder's button must never crash the app or the
-/// background isolate.
-///
-/// [plugin] is only needed for [actionSnooze]; pass null (and it will no-op
-/// the reschedule) when there is nothing to schedule with.
+/// [plugin] is only needed for [actionSnooze]; pass null (the reschedule then
+/// no-ops) when there is nothing to schedule with.
 Future<NotificationActionResult> applyNotificationAction({
   required AppDatabase db,
   required String? actionId,
@@ -116,10 +112,10 @@ Future<NotificationActionResult> applyNotificationAction({
   // Existence check first, for both actions. `deviceId` is deliberately NOT
   // part of this test: the column records which install made the *last write*
   // (see `tables/tasks.dart`), not who owns the row, so a task restored from a
-  // backup or last edited on another install would fail an ownership test it
-  // should pass. The database is local to this device, so "present and live
-  // here" is what ownership actually means; the real risk this guards is a
-  // stale or malformed payload naming a row that is gone.
+  // backup or last edited elsewhere would fail an ownership test it should
+  // pass. The database is local, so "present and live here" is what ownership
+  // means; the real risk guarded against is a stale or malformed payload naming
+  // a row that is gone.
   final String title;
   switch (target.subject) {
     case NotificationSubject.task:
@@ -198,10 +194,9 @@ Future<void> _snooze({
 }
 
 /// Background entry point for an action tapped while the app is terminated.
-///
-/// Must be a top-level function annotated `@pragma('vm:entry-point')` — the
-/// plugin looks it up by name in a fresh isolate, which has none of the app's
-/// state. Opens its own database and closes it again, exactly as
+/// Must be a top-level function annotated `@pragma('vm:entry-point')`: the
+/// plugin looks it up by name in a fresh isolate with none of the app's state.
+/// Opens its own database and closes it again, as
 /// `homeWidgetBackgroundCallback` does.
 @pragma('vm:entry-point')
 Future<void> notificationActionBackgroundHandler(
