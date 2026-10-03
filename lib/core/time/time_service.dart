@@ -77,14 +77,13 @@ class TimeService {
   /// Returns the timezone identifier recorded on events.
   ///
   /// NOTE: Dart's [DateTime.timeZoneName] is a platform-dependent abbreviation
-  /// ("MDT", "IST") or a Windows display name ("India Standard Time") — it is
-  /// NOT the IANA identifier SPEC.md §1.2 asks for. Nothing depends on it for
-  /// correctness, because `local_date` is resolved at write time and never
-  /// recomputed, but it is the field you will want when diagnosing a timezone
-  /// bug months from now.
+  /// ("MDT", "IST") or a Windows display name, not the IANA identifier SPEC.md
+  /// §1.2 asks for. Nothing depends on it for correctness, since `local_date`
+  /// is resolved at write time and never recomputed, but it's the field you'll
+  /// want when diagnosing a timezone bug months from now.
   ///
-  /// To satisfy the spec, add `flutter_timezone` and pass its IANA id in via
-  /// [tzIdProvider]. Until then this records the abbreviation.
+  /// The app passes the IANA id from `flutter_timezone` in via [tzIdProvider];
+  /// without one, this records the abbreviation.
   String currentTzId() => (_tzIdProvider ?? _deviceTzId)();
 
   static String _deviceTzId() => DateTime.now().timeZoneName;
