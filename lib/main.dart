@@ -17,13 +17,14 @@ import 'data/providers/onboarding_providers.dart';
 import 'data/repositories/settings_repository.dart';
 import 'features/backup/domain/supabase_backup_service.dart';
 import 'features/reminders/reminder_service.dart';
+import 'features/startup/presentation/startup_error_screen.dart';
 import 'features/widgets/home_screen_widget_service.dart';
 
-/// Startup is deliberately split in two. Everything in [main] runs before the
-/// first frame, so it must stay fast: opening the database, resolving the
-/// device id and timezone, and wiring up the notification plugin/channel
-/// (cheap: no database scan, no network). Everything slow and deferrable
-/// (reconciling every task's and habit's reminders, and Supabase's
+/// Startup is deliberately split in two. Everything in [attemptStartup] runs
+/// before the first frame, so it must stay fast: opening the database,
+/// resolving the device id and timezone, and wiring up the notification
+/// plugin/channel (cheap: no database scan, no network). Everything slow and
+/// deferrable (reconciling every task's and habit's reminders, and Supabase's
 /// network-touching initialize()) moves into [_finishStartup], kicked off
 /// *after* runApp() so the UI paints immediately. Previously every step ran in
 /// one sequential chain before anything rendered, which made the app take 2-3s
@@ -75,23 +76,124 @@ void main() async {
     FlutterForegroundTask.initCommunicationPort();
   }
 
-  final db = AppDatabase();
+  await launchApp(
+    attempt: () => attemptStartup(
+      openDatabase: AppDatabase.new,
+      registerHomeWidgetCallback: _registerHomeWidgetCallback,
+      resolveTimezone: _resolveTimezone,
+      initializeReminders: (reminderService, tzId) =>
+          reminderService.initialize(tzId: tzId),
+    ),
+  );
+}
+
+Future<void> _registerHomeWidgetCallback() async {
+  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    await HomeWidget.registerInteractivityCallback(homeWidgetBackgroundCallback);
+  }
+}
+
+Future<String> _resolveTimezone() async {
+  try {
+    return (await FlutterTimezone.getLocalTimezone()).identifier;
+  } catch (_) {
+    return '';
+  }
+}
+
+/// What a successful [attemptStartup] hands to [launchApp].
+class StartedApp {
+  const StartedApp({required this.app, required this.finishStartup});
+
+  final Widget app;
+
+  /// The deferred half of startup; see [_finishStartup].
+  final Future<void> Function() finishStartup;
+}
+
+/// Runs [attempt] and shows the app, or a [StartupErrorScreen] if it throws.
+///
+/// "Try again" calls back in here, so a retry that succeeds replaces the error
+/// screen with the app exactly as a first-time success would, and one that
+/// fails shows the error screen again.
+///
+/// [show] is [runApp] outside tests: the test binding's `runApp` runs a frame
+/// synchronously and so defers everything after it.
+Future<void> launchApp({
+  required Future<StartedApp> Function() attempt,
+  void Function(Widget) show = runApp,
+  int attemptNumber = 1,
+}) async {
+  final StartedApp started;
+  try {
+    started = await attempt();
+  } catch (error, stackTrace) {
+    debugPrint('Startup failed (attempt $attemptNumber): $error\n$stackTrace');
+    show(
+      StartupErrorScreen(
+        error: error,
+        stackTrace: stackTrace,
+        attempt: attemptNumber,
+        onRetry: () => launchApp(
+          attempt: attempt,
+          show: show,
+          attemptNumber: attemptNumber + 1,
+        ),
+      ),
+    );
+    return;
+  }
+
+  show(started.app);
+
+  // Fire-and-forget: the UI is already on screen by the time this runs.
+  unawaited(started.finishStartup());
+}
+
+/// One pass through the pre-first-frame startup sequence, with its
+/// dependencies passed in so a test can make any step fail.
+///
+/// If anything throws, the database this attempt opened is closed before the
+/// error propagates, so a retry never meets a connection left over from the
+/// failed one.
+Future<StartedApp> attemptStartup({
+  required AppDatabase Function() openDatabase,
+  required Future<void> Function() registerHomeWidgetCallback,
+  required Future<String> Function() resolveTimezone,
+  required Future<void> Function(ReminderService reminderService, String tzId)
+      initializeReminders,
+}) async {
+  final db = openDatabase();
+  try {
+    return await _buildApp(
+      db,
+      registerHomeWidgetCallback: registerHomeWidgetCallback,
+      resolveTimezone: resolveTimezone,
+      initializeReminders: initializeReminders,
+    );
+  } catch (_) {
+    try {
+      await db.close();
+    } catch (e) {
+      debugPrint('Closing the database after a failed startup: $e');
+    }
+    rethrow;
+  }
+}
+
+Future<StartedApp> _buildApp(
+  AppDatabase db, {
+  required Future<void> Function() registerHomeWidgetCallback,
+  required Future<String> Function() resolveTimezone,
+  required Future<void> Function(ReminderService reminderService, String tzId)
+      initializeReminders,
+}) async {
   final settingsRepo = SettingsRepository(db: db);
 
   final bootstrap = await runStartupBootstrap(
     settingsRepo: settingsRepo,
-    registerHomeWidgetCallback: () async {
-      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-        await HomeWidget.registerInteractivityCallback(homeWidgetBackgroundCallback);
-      }
-    },
-    resolveTimezone: () async {
-      try {
-        return (await FlutterTimezone.getLocalTimezone()).identifier;
-      } catch (_) {
-        return '';
-      }
-    },
+    registerHomeWidgetCallback: registerHomeWidgetCallback,
+    resolveTimezone: resolveTimezone,
   );
 
   final tzId = bootstrap.tzId;
@@ -140,20 +242,18 @@ void main() async {
   // synchronous path. scheduleFor()/scheduleForHabit() call straight into
   // the notification plugin with no "is it initialized" guard, so this must
   // complete before any screen can be interacted with.
-  await reminderService.initialize(tzId: tzId);
+  await initializeReminders(reminderService, tzId);
 
-  runApp(
-    UncontrolledProviderScope(
+  return StartedApp(
+    app: UncontrolledProviderScope(
       container: container,
       child: const FocusStackApp(),
     ),
+    finishStartup: () => _finishStartup(
+      reminderService: reminderService,
+      settingsRepo: settingsRepo,
+    ),
   );
-
-  // Fire-and-forget: the UI is already on screen by the time this runs.
-  unawaited(_finishStartup(
-    reminderService: reminderService,
-    settingsRepo: settingsRepo,
-  ));
 }
 
 /// The slow, deferrable half of startup; see the [main] doc comment.
