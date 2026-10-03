@@ -24,6 +24,7 @@ import 'package:habit_tracker/core/notifications/notification_permission_helper.
 import 'package:habit_tracker/core/time/time_service.dart';
 import 'package:habit_tracker/data/database/app_database.dart';
 import 'package:habit_tracker/data/providers/database_provider.dart';
+import 'package:habit_tracker/data/providers/habit_providers.dart';
 import 'package:habit_tracker/data/repositories/events_repository.dart';
 import 'package:habit_tracker/data/repositories/habits_repository.dart';
 import 'package:habit_tracker/data/repositories/reminder_config_repository.dart';
@@ -97,12 +98,14 @@ int _at(String date, [int hour = 12, int minute = 0]) {
 
 /// Device in UTC, logical day starting at 04:00, clock under test control.
 class _Harness {
-  _Harness(String date, {int hour = 12}) : nowMs = _at(date, hour) {
+  _Harness(String date, {int hour = 12, this.offsetMin = 0})
+      : nowMs = _at(date, hour) - offsetMin * 60000 {
     db = AppDatabase(NativeDatabase.memory());
     time = TimeService(
-      localize: (ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
-      offsetMinutesAt: (_) => 0,
-      tzIdProvider: () => 'UTC',
+      localize: (ms) =>
+          DateTime.fromMillisecondsSinceEpoch(ms + offsetMin * 60000, isUtc: true),
+      offsetMinutesAt: (_) => offsetMin,
+      tzIdProvider: () => offsetMin == 0 ? 'UTC' : 'UTC${offsetMin > 0 ? '+' : ''}$offsetMin',
       nowProvider: () => nowMs,
     );
     settings = SettingsRepository(db: db);
@@ -132,6 +135,8 @@ class _Harness {
     );
   }
 
+  /// Minutes the device's wall clock is ahead of UTC (330 = India).
+  final int offsetMin;
   int nowMs;
   late final AppDatabase db;
   late final TimeService time;
@@ -149,8 +154,9 @@ class _Harness {
         .get();
   }
 
+  /// [date], [hour] and [minute] are the device's WALL clock, in its zone.
   void setNow(String date, [int hour = 12, int minute = 0]) =>
-      nowMs = _at(date, hour, minute);
+      nowMs = _at(date, hour, minute) - offsetMin * 60000;
 
   List<Override> get overrides => [
         databaseProvider.overrideWithValue(db),
@@ -1510,5 +1516,232 @@ void main() {
       final events = await h.db.select(h.db.events).get();
       expect(events.any((e) => e.type == EventTypes.habitUnchecked), isTrue);
     });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Backfilling a missed day from the calendar.
+  //
+  // The reported bug: miss a day, watch the streak break, go back and mark that
+  // exact day done, and the number restarts instead of coming back. The pure
+  // engine already handles this (test/habit_streak_test.dart), so these drive
+  // the rest of the path with the REAL repository, providers and widgets:
+  // calendar cell -> day sheet -> HabitsRepository.check -> Drift stream ->
+  // habitSnapshotsProvider -> the digit on screen, read through semantics.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('Backfilling a missed day through the calendar', () {
+    Future<void> openDay(WidgetTester tester, String cellLabel) async {
+      final cell = find.bySemanticsLabel(cellLabel);
+      expect(cell, findsOneWidget, reason: 'the grid cell "$cellLabel"');
+      await tester.ensureVisible(cell);
+      await tester.tap(cell);
+      await _settle(tester);
+    }
+
+    testWidgets('a gap in the middle: the whole run comes back, not a restart',
+        (tester) async {
+      _phone(tester, height: 1400);
+      final semantics = tester.ensureSemantics();
+      final h = _Harness('2026-09-01');
+      addTearDown(h.db.close);
+
+      final id = await h.repo.createHabit(
+        title: 'Walk',
+        scheduleRule: 'FREQ=DAILY',
+      );
+      // 09-01..09-09 done, 09-10 missed, 09-11..09-17 done, today pending.
+      await h.completeOn(id, [
+        for (var d = 1; d <= 9; d++) TimeService.formatIsoDate(2026, 9, d),
+        for (var d = 11; d <= 17; d++) TimeService.formatIsoDate(2026, 9, d),
+      ]);
+      h.setNow('2026-09-18', 10);
+
+      await tester.pumpWidget(_app(h, HabitDetailScreen(habitId: id)));
+      await _settle(tester);
+
+      expect(_streakLabels(tester), ['7 day streak'],
+          reason: 'the miss visibly broke it: only 09-11..09-17 count');
+      expect(_allLabels(tester), contains('Best streak 9 days'));
+
+      await openDay(tester, 'Thursday 10 September, missed');
+      await tester.tap(find.text('Mark done'));
+      await _settle(tester);
+
+      final after = _streakLabels(tester);
+      expect(after, ['17 day streak'],
+          reason: 'what it would be had 09-10 never been missed');
+      expect(_allLabels(tester), contains('Best streak 17 days'));
+      expect(_allLabels(tester), contains('Thursday 10 September, done'));
+
+      // The write landed on the day that was tapped, byte for byte.
+      final snap = (await h.repo.loadSnapshot(id))!;
+      expect(snap.entries['2026-09-10']?.count, 1);
+      expect(snap.scheduledDates, contains('2026-09-10'));
+      final checkedOn10th = (await (h.db.select(h.db.events)
+                ..where((e) => e.type.equals(EventTypes.habitChecked)))
+              .get())
+          .where((e) => e.localDate == '2026-09-10')
+          .toList();
+      expect(checkedOn10th, hasLength(1));
+      expect(checkedOn10th.single.occurredAt, _at('2026-09-18', 10),
+          reason: 'the true instant is today; only local_date is the 10th');
+
+      // The provider every other screen (and the home-screen widget push) reads.
+      final container = ProviderScope.containerOf(
+          tester.element(find.byType(HabitDetailScreen)));
+      final shared = container.read(habitSnapshotsProvider).value!;
+      expect(shared.single.streaks.current, 17);
+
+      _report('BACKFILL middle: before=7 after=$after best=${snap.streaks.longest}');
+      semantics.dispose();
+    });
+
+    testWidgets('yesterday missed, filled in this morning: today pending does '
+        'not reset it', (tester) async {
+      _phone(tester, height: 1400);
+      final semantics = tester.ensureSemantics();
+      final h = _Harness('2026-09-01');
+      addTearDown(h.db.close);
+
+      final id = await h.repo.createHabit(
+        title: 'Walk',
+        scheduleRule: 'FREQ=DAILY',
+      );
+      await h.completeOn(id, [
+        for (var d = 1; d <= 16; d++) TimeService.formatIsoDate(2026, 9, d),
+      ]);
+      h.setNow('2026-09-18', 10);
+
+      await tester.pumpWidget(_app(h, HabitDetailScreen(habitId: id)));
+      await _settle(tester);
+      expect(_streakLabels(tester), ['No streak yet'],
+          reason: 'yesterday missed, today not over: nothing is running');
+
+      await openDay(tester, 'Thursday 17 September, missed');
+      await tester.tap(find.text('Mark done'));
+      await _settle(tester);
+
+      expect(_streakLabels(tester), ['17 day streak']);
+      _report('BACKFILL yesterday: before=No streak yet after=${_streakLabels(tester)}');
+      semantics.dispose();
+    });
+
+    testWidgets('a counted habit: Mark done fills the whole target for the day',
+        (tester) async {
+      _phone(tester, height: 1400);
+      final semantics = tester.ensureSemantics();
+      final h = _Harness('2026-09-01');
+      addTearDown(h.db.close);
+
+      final id = await h.repo.createHabit(
+        title: 'Water',
+        scheduleRule: 'FREQ=DAILY',
+        targetCount: 3,
+      );
+      await h.completeOn(
+        id,
+        [
+          for (var d = 1; d <= 9; d++) TimeService.formatIsoDate(2026, 9, d),
+          for (var d = 11; d <= 17; d++) TimeService.formatIsoDate(2026, 9, d),
+        ],
+        times: 3,
+      );
+      h.setNow('2026-09-18', 10);
+
+      await tester.pumpWidget(_app(h, HabitDetailScreen(habitId: id)));
+      await _settle(tester);
+      expect(_streakLabels(tester), ['7 day streak']);
+
+      await openDay(tester, 'Thursday 10 September, missed');
+      await tester.tap(find.text('Mark done'));
+      await _settle(tester);
+
+      expect(_streakLabels(tester), ['17 day streak']);
+      expect((await h.repo.loadSnapshot(id))!.entries['2026-09-10']?.count, 3);
+      semantics.dispose();
+    });
+
+    testWidgets('the Habits list card follows the same backfill', (tester) async {
+      // A second renderer of the same number: the card on the Habits screen,
+      // which never sees the day sheet. The write goes straight through the
+      // repository, the way the sheet's "Mark done" does.
+      _phone(tester, height: 1400);
+      final semantics = tester.ensureSemantics();
+      final h = _Harness('2026-09-01');
+      addTearDown(h.db.close);
+
+      final id = await h.repo.createHabit(
+        title: 'Walk',
+        scheduleRule: 'FREQ=DAILY',
+      );
+      await h.completeOn(id, [
+        for (var d = 1; d <= 9; d++) TimeService.formatIsoDate(2026, 9, d),
+        for (var d = 11; d <= 17; d++) TimeService.formatIsoDate(2026, 9, d),
+      ]);
+      h.setNow('2026-09-18', 10);
+
+      // A card says "7 day streak, a milestone" at exactly seven, so match the
+      // number rather than the whole label.
+      List<String> card() => _allLabels(tester)
+          .where((l) => RegExp(r'^\d+ day streak').hasMatch(l))
+          .toList();
+
+      await tester.pumpWidget(_app(h, const HabitsScreen()));
+      await _settle(tester);
+      expect(card(), ['7 day streak, a milestone']);
+
+      await h.repo.check(id, localDate: '2026-09-10');
+      await _settle(tester);
+
+      expect(card().single, startsWith('17 day streak'));
+      semantics.dispose();
+    });
+
+    // The phone is in India (UTC+5:30) with a 04:00 day start, so for the four
+    // and a half hours after midnight the logical day is still yesterday. Every
+    // date in the path is an opaque YYYY-MM-DD string; the zone only decides
+    // which one is "today", and that must not shift where the backfill lands.
+    for (final wall in [(hour: 2, minute: 30), (hour: 12, minute: 0)]) {
+      testWidgets(
+          'in India at ${wall.hour.toString().padLeft(2, '0')}:'
+          '${wall.minute.toString().padLeft(2, '0')} local the backfill lands on '
+          'the tapped day', (tester) async {
+        _phone(tester, height: 1400);
+        final semantics = tester.ensureSemantics();
+        final h = _Harness('2026-09-01', offsetMin: 330);
+        addTearDown(h.db.close);
+
+        final id = await h.repo.createHabit(
+          title: 'Walk',
+          scheduleRule: 'FREQ=DAILY',
+        );
+        // At 02:30 on the 18th the logical day is still the 17th, so the last
+        // day that can be done is the 16th; at noon it is the 17th.
+        final today = wall.hour < 4 ? '2026-09-17' : '2026-09-18';
+        final lastDone = wall.hour < 4 ? 16 : 17;
+        await h.completeOn(id, [
+          for (var d = 1; d <= 9; d++) TimeService.formatIsoDate(2026, 9, d),
+          for (var d = 11; d <= lastDone; d++)
+            TimeService.formatIsoDate(2026, 9, d),
+        ]);
+        h.setNow('2026-09-18', wall.hour, wall.minute);
+        expect(h.time.todayLocalDate(), today);
+
+        await tester.pumpWidget(_app(h, HabitDetailScreen(habitId: id)));
+        await _settle(tester);
+        expect(_streakLabels(tester), ['${lastDone - 10} day streak']);
+
+        await openDay(tester, 'Thursday 10 September, missed');
+        await tester.tap(find.text('Mark done'));
+        await _settle(tester);
+
+        expect(_streakLabels(tester), ['$lastDone day streak']);
+        final snap = (await h.repo.loadSnapshot(id))!;
+        expect(snap.todayLocalDate, today);
+        expect(snap.entries.keys, contains('2026-09-10'));
+        _report('BACKFILL India ${wall.hour}:${wall.minute} '
+            'today=$today -> ${_streakLabels(tester)}');
+        semantics.dispose();
+      });
+    }
   });
 }

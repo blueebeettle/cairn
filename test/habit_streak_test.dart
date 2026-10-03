@@ -381,6 +381,109 @@ void main() {
     });
   });
 
+  group('backfilling a missed day restores the streak through it', () {
+    // The reported bug: miss a day (the streak visibly breaks), then go back
+    // and mark that exact day done from the day grid. The streak must come back
+    // as if the miss never happened, not restart from the backfilled day.
+    //
+    // There is no stored streak anywhere — every call re-resolves the whole
+    // history — so the only thing that can differ between "never missed" and
+    // "missed, then backfilled" is the record map. Both are compared here.
+    const today = '2026-09-18';
+    final dates = sched(daily, '2026-09-01', today);
+
+    test('a gap in the middle: the number runs through the backfilled day', () {
+      // 09-01..09-09 done, 09-10 missed, 09-11..09-17 done, today pending.
+      final withMiss = allDone(dates)
+        ..remove('2026-09-10')
+        ..remove(today);
+
+      final broken = streaks(scheduled: dates, entries: withMiss, today: today);
+      expect(broken.current, 7, reason: 'only 09-11..09-17 after the miss');
+      expect(broken.longest, 9, reason: '09-01..09-09 before it');
+      expect(broken.outcomes['2026-09-10'], HabitDayOutcome.missed);
+
+      final backfilled = Map.of(withMiss)
+        ..['2026-09-10'] = const HabitDayRecord(count: 1);
+      final restored =
+          streaks(scheduled: dates, entries: backfilled, today: today);
+      expect(restored.outcomes['2026-09-10'], HabitDayOutcome.done);
+      expect(restored.current, 17, reason: '09-01..09-17, today still pending');
+      expect(restored.longest, 17);
+
+      // Identical to the record that never had a miss at all.
+      final neverMissed = streaks(
+        scheduled: dates,
+        entries: allDone(dates)..remove(today),
+        today: today,
+      );
+      expect(restored.current, neverMissed.current);
+      expect(restored.longest, neverMissed.longest);
+    });
+
+    test('yesterday missed, then backfilled: today pending does not reset it',
+        () {
+      // The most common shape: forget yesterday, notice this morning.
+      final withMiss = allDone(dates)
+        ..remove('2026-09-17')
+        ..remove(today);
+
+      final broken = streaks(scheduled: dates, entries: withMiss, today: today);
+      expect(broken.current, 0,
+          reason: 'yesterday was missed and today is not over yet');
+      expect(broken.longest, 16, reason: '09-01..09-16');
+
+      final backfilled = Map.of(withMiss)
+        ..['2026-09-17'] = const HabitDayRecord(count: 1);
+      final restored =
+          streaks(scheduled: dates, entries: backfilled, today: today);
+      expect(restored.current, 17, reason: '09-01..09-17, not 1');
+      expect(restored.longest, 17);
+    });
+
+    test('the first day of the habit missed, then backfilled', () {
+      final withMiss = allDone(dates)
+        ..remove('2026-09-01')
+        ..remove(today);
+      expect(
+        streaks(scheduled: dates, entries: withMiss, today: today).current,
+        16,
+      );
+
+      final backfilled = Map.of(withMiss)
+        ..['2026-09-01'] = const HabitDayRecord(count: 1);
+      expect(
+        streaks(scheduled: dates, entries: backfilled, today: today).current,
+        17,
+      );
+    });
+
+    test('a counted habit needs the whole target on the backfilled day', () {
+      // 8 glasses a day. One tap on a missed day records 1 of 8, which is still
+      // a miss; the streak only comes back once the count reaches the target.
+      final withMiss = allDone(dates, count: 8)
+        ..remove('2026-09-10')
+        ..remove(today);
+
+      final oneTap = Map.of(withMiss)
+        ..['2026-09-10'] = const HabitDayRecord(count: 1);
+      expect(
+        streaks(scheduled: dates, entries: oneTap, today: today, target: 8)
+            .current,
+        7,
+        reason: '1 of 8 on 09-10 is still a miss',
+      );
+
+      final full = Map.of(withMiss)
+        ..['2026-09-10'] = const HabitDayRecord(count: 8);
+      expect(
+        streaks(scheduled: dates, entries: full, today: today, target: 8)
+            .current,
+        17,
+      );
+    });
+  });
+
   group('totals', () {
     test('counts every check-off, not every day', () {
       expect(
