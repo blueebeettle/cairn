@@ -12,20 +12,14 @@ import '../../../data/providers/database_provider.dart';
 import '../../../data/providers/update_providers.dart';
 import '../../../theme/app_theme.dart';
 
-/// How an optional [UpdateDialog] was closed, when it was closed by a button.
-///
-/// A pop that carries no value — the barrier tap or the system back button — is
-/// the third way out, and is treated as "Later" (see [_UpdateDialogState]).
+/// How an optional [UpdateDialog] was closed by a button. A pop with no value
+/// (barrier tap or back button) is treated as "Later"; see [_UpdateDialogState].
 enum _DialogResult { later, closed }
 
-/// Shows the dialog for [action]: nothing for [NoAction], a normal dismissible
-/// dialog for [OptionalUpdate], and for [MandatoryUpdate] one that cannot be
-/// dismissed at all.
+/// Shows the dialog for [action]: nothing for [NoAction], a dismissible dialog
+/// for [OptionalUpdate], and one that can't be dismissed for [MandatoryUpdate].
 ///
-/// Shared by the launch-time check (`NavigationShell`) and the Settings
-/// button, so a manual check can never offer a bypassable dialog where the
-/// automatic one would have forced the update. Everything about *which* dialog
-/// comes from [action]; this file is presentation only.
+/// Shared by the launch check (`NavigationShell`) and the Settings tile.
 Future<void> showUpdateDialog(BuildContext context, UpdateAction action) async {
   switch (action) {
     case NoAction():
@@ -48,12 +42,11 @@ Future<void> showUpdateDialog(BuildContext context, UpdateAction action) async {
 
 enum _Phase { offer, downloading, verifying, cancelling, launched, failed }
 
-/// The update dialog: the offer, then — in place, not in a second dialog — the
-/// download, the checksum check, and the hand-off to Android's installer.
+/// The update dialog: the offer, then the download, checksum check and installer
+/// hand-off, all in place.
 ///
-/// [mandatoryReason] null means optional. A mandatory dialog has no "Later",
-/// is wrapped in a `PopScope(canPop: false)`, and says why it is required; the
-/// only way past it is to update.
+/// A null [mandatoryReason] means optional. A mandatory dialog has no "Later",
+/// is wrapped in `PopScope(canPop: false)`, and says why it's required.
 class UpdateDialog extends ConsumerStatefulWidget {
   const UpdateDialog({super.key, required this.release, this.mandatoryReason});
 
@@ -70,14 +63,13 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
   int? _total;
   String? _error;
 
-  /// Whether the failure on screen can be fixed by trying again. A release
-  /// that has no APK for this device cannot: the release list in hand is
-  /// already out of date, and it takes a fresh check — the next launch — to
-  /// see an upload that finished since.
+  /// False when the release has no APK for this device: retrying would reuse the
+  /// same stale release list, and only the next launch's check can see an upload
+  /// that has since finished.
   bool _canRetry = true;
 
-  /// The verified APK, once there is one. Kept after the installer launches so
-  /// "Install again" does not download 25-70MB a second time.
+  /// The verified APK, kept after the installer launches so "Install again"
+  /// doesn't download 25-70MB twice.
   File? _verifiedApk;
 
   UpdateCancelToken? _cancelToken;
@@ -90,15 +82,13 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
 
   @override
   void dispose() {
-    // A dialog torn down mid-download must not leave the download running.
+    // Don't leave a download running after the dialog is torn down.
     _cancelToken?.cancel();
     super.dispose();
   }
 
-  // ── Actions ────────────────────────────────────────────────────────────────
-
-  /// "Later" on an optional update: remember the version so the next launch
-  /// stays quiet until something newer is published.
+  /// "Later": remember the version so launches stay quiet until something newer
+  /// is published.
   void _later() {
     unawaited(rememberSkippedUpdateVersion(
       ref.read(settingsRepositoryProvider),
@@ -107,23 +97,23 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     Navigator.of(context).pop(_DialogResult.later);
   }
 
-  /// Runs the whole flow: pick the APK for this device, download it with
-  /// progress, verify it, hand it to the installer.
+  /// The whole flow: pick the APK for this device, download it with progress,
+  /// verify it, hand it to the installer.
   Future<void> _startUpdate() async {
     if (_busy) return;
     final installer = ref.read(updateInstallerProvider);
     final release = widget.release;
 
-    // The moment they tap Update they are no longer "just declined", whatever
-    // happens next — including a failure below.
+    // Tapping Update ends the "just declined" state, even if the update then
+    // fails.
     unawaited(clearSkippedUpdateVersion(ref.read(settingsRepositoryProvider)));
 
     List<String> abis;
     try {
       abis = await ref.read(supportedAbisProvider.future);
     } catch (_) {
-      // Unreadable device info is not a reason to refuse. An empty list still
-      // reaches the universal APK, which runs everywhere.
+      // Unreadable device info shouldn't block the update: an empty list still
+      // gets the universal APK.
       abis = const [];
     }
     if (!mounted) return;
@@ -173,9 +163,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
       _backToOffer();
       return;
     } on UpdateInstallException catch (e) {
-      // A cancel that could only take effect once a slow request timed out
-      // surfaces as a download failure; the tester asked for it, so it is not
-      // one.
+      // A cancel that only took effect when a slow request timed out arrives as
+      // a download failure; it isn't one.
       if (token.isCancelled) {
         _backToOffer();
       } else if (mounted) {
@@ -192,8 +181,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     }
     if (!mounted) return;
     if (token.isCancelled) {
-      // Cancelled in the instant the download finished: honour it, and do not
-      // leave a verified APK behind.
+      // Cancelled just as the download finished: honour it and discard the APK.
       await installer.discard(file);
       _backToOffer();
       return;
@@ -217,8 +205,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     }
   }
 
-  /// "Install again", after the system installer has been opened once: reuse
-  /// the verified file if it is still there, rather than downloading again.
+  /// "Install again": reuse the verified file if it's still there rather than
+  /// downloading again.
   Future<void> _installAgain() async {
     final apk = _verifiedApk;
     if (apk == null) return _startUpdate();
@@ -227,14 +215,14 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
 
   void _cancelDownload() {
     _cancelToken?.cancel();
-    // Held on "Cancelling" until the download actually stops (it checks between
-    // chunks). Returning to the offer immediately would let a second tap on
-    // Update start a download into the same file the first is still closing.
+    // Stay on "Cancelling" until the download stops (it checks between chunks).
+    // Returning to the offer now would let a second Update tap write to the file
+    // the first is still closing.
     setState(() => _phase = _Phase.cancelling);
   }
 
-  /// Back to the offer — for a mandatory update too: cancelling a download is
-  /// not a way past the dialog, it just returns to "Update".
+  /// Back to the offer, for a mandatory update too: cancelling isn't a way past
+  /// the dialog.
   void _backToOffer() {
     if (mounted) setState(() => _phase = _Phase.offer);
   }
@@ -247,7 +235,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     });
   }
 
-  /// Plain language only — never the exception text behind a failure.
+  /// Plain language only, never the exception text.
   static String _messageFor(UpdateFailure failure) => switch (failure) {
         UpdateFailure.download =>
           "The download didn't finish. Check your connection and try again.",
@@ -260,8 +248,6 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         UpdateFailure.installerNotLaunched =>
           "Couldn't open Android's installer. Try again.",
       };
-
-  // ── Presentation ───────────────────────────────────────────────────────────
 
   String get _requiredText => switch (widget.mandatoryReason) {
         MandatoryReason.markedByRelease => 'This update is required.',
@@ -278,14 +264,13 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     final tokens = context.tokens;
 
     return PopScope(
-      // A mandatory dialog can never be popped. An optional one can, except
-      // mid-download, where a stray tap outside would orphan the transfer.
+      // Mandatory: never poppable. Optional: poppable except mid-download, where
+      // a stray tap outside would orphan the transfer.
       canPop: !_isMandatory && !_busy,
       onPopInvokedWithResult: (didPop, result) {
-        // An optional offer dismissed with no button — barrier tap or back — is
-        // "Later". Without this, closing it that way would show it again on
-        // every launch, which is the nagging "Later" exists to prevent. Button
-        // pops carry a result and are handled by the button.
+        // An optional offer dismissed without a button (barrier tap or back)
+        // counts as "Later", or it would reappear on every launch. Button pops
+        // carry a result and are handled by the button.
         if (didPop && result == null && !_isMandatory && _phase == _Phase.offer) {
           unawaited(rememberSkippedUpdateVersion(
             ref.read(settingsRepositoryProvider),
@@ -397,7 +382,6 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     switch (_phase) {
       case _Phase.offer:
         return [
-          // No "Later" on a mandatory update: only "Update".
           if (!_isMandatory)
             TextButton(onPressed: _later, child: const Text('Later')),
           FilledButton(onPressed: _startUpdate, child: const Text('Update')),
@@ -406,7 +390,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         return [TextButton(onPressed: _cancelDownload, child: const Text('Cancel'))];
       case _Phase.verifying:
       case _Phase.cancelling:
-        // Hashing cannot be interrupted, and a cancel is already in flight.
+        // No actions: hashing can't be interrupted, and a cancel is in flight.
         return null;
       case _Phase.launched:
         return [

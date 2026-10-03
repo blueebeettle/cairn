@@ -3,25 +3,21 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Where the updater looks for releases: the plural list endpoint, not
-/// `/releases/latest`. `/latest` returns a single release, so it cannot say
-/// how many releases the running build is behind — and that count is what the
-/// "too far behind" rule in `decideUpdateAction` is built on. The cost of the
-/// list endpoint is that it does not hide drafts and prereleases for us the
-/// way `/latest` does, so [UpdateChecker] filters them itself.
+/// GitHub's release list, not `/releases/latest`: `/latest` returns a single
+/// release, so it can't give the "N releases behind" count that
+/// `decideUpdateAction` needs. The list also includes drafts and prereleases,
+/// which [UpdateChecker] filters out.
 ///
-/// Public repository, unauthenticated request, on purpose: this URL ships
-/// inside the APK, so there is no token to leak because there is no token. The
-/// unauthenticated limit is 60 requests an hour per IP, far above one check
-/// per launch for a handful of testers.
+/// Public repo, unauthenticated, so no token ships in the APK. The 60 requests
+/// an hour per IP limit is far above one check per launch.
 const String releasesApiUrl =
     'https://api.github.com/repos/blueebeettle/cairn/releases';
 
-/// The line a release's notes carry to mark it unskippable. See
+/// The line in a release's notes that makes the update mandatory. See
 /// [hasForceUpdateMarker].
 const String forceUpdateMarker = 'FORCE_UPDATE';
 
-/// What GitHub's release API gave us, trimmed to what the updater needs.
+/// A GitHub release, trimmed to what the updater needs.
 class ReleaseInfo {
   const ReleaseInfo({
     required this.version,
@@ -32,34 +28,28 @@ class ReleaseInfo {
     required this.isMandatory,
   });
 
-  /// "2.3.0" — the tag with its leading "v" stripped. This, never the build
-  /// number, is what releases are compared and named by (see
-  /// [compareVersions]).
+  /// "2.3.0": the tag without its leading "v". Releases are compared and named
+  /// by this, never by the build number (see [compareVersions]).
   final String version;
 
-  /// "v2.3.0", exactly as published.
+  /// "v2.3.0", as published.
   final String tagName;
 
-  /// The release's body, for display. Raw, so it still contains the
-  /// [forceUpdateMarker] line when there is one; run it through
-  /// [releaseNotesForDisplay] before showing it to a person.
+  /// The release body, raw. It still contains the [forceUpdateMarker] line, so
+  /// pass it through [releaseNotesForDisplay] before showing it.
   final String notes;
 
-  /// Asset name -> download URL, for every asset on the release. Nothing is
-  /// pre-selected here: choosing the APK for a device is `selectApkAsset`'s
-  /// job, and finding `checksums.json` is the installer's.
+  /// Asset name -> download URL, for every asset on the release.
   final Map<String, String> assets;
 
   final DateTime publishedAt;
 
-  /// Whether the release's notes carry the [forceUpdateMarker] line.
+  /// Whether the notes carry the [forceUpdateMarker] line.
   final bool isMandatory;
 }
 
-/// Every non-draft, non-prerelease release newer than [currentVersion],
-/// newest first. Empty when already current. [latest] is simply the first
-/// element — kept as a named getter so callers don't reach for `.first`
-/// on a list that might be empty.
+/// Releases newer than [currentVersion] (no drafts or prereleases), newest
+/// first. Empty when already current.
 class ReleaseStatus {
   const ReleaseStatus({
     required this.newerReleases,
@@ -69,21 +59,18 @@ class ReleaseStatus {
   final List<ReleaseInfo> newerReleases;
   final String currentVersion;
 
+  /// The newest release, or null when already current.
   ReleaseInfo? get latest => newerReleases.isEmpty ? null : newerReleases.first;
 
-  /// How many published releases the running build is missing. Recomputed from
-  /// the live release list on every check rather than counted locally, so it
-  /// cannot drift: a tester who skips opening the app across three releases is
-  /// still told the true number the next time they do.
+  /// How many releases the running build is missing. Recomputed from the live
+  /// list on every check rather than counted locally, so it can't drift.
   int get releasesBehind => newerReleases.length;
 }
 
-/// The release list could not be fetched or understood.
+/// The release list could not be fetched or parsed.
 ///
-/// Thrown for a non-200 response and for a body that is not the JSON array
-/// GitHub documents. Transport failures (no connection, a timeout) are not
-/// wrapped — they already have clean types of their own — so callers that only
-/// care *whether* it worked catch everything.
+/// Thrown for a non-200 response or a body that isn't a JSON array. Transport
+/// failures (no connection, timeout) are not wrapped.
 class UpdateCheckException implements Exception {
   const UpdateCheckException(this.message);
 
@@ -93,22 +80,16 @@ class UpdateCheckException implements Exception {
   String toString() => 'UpdateCheckException: $message';
 }
 
-/// Compares dotted version strings ("2.2.0" vs "2.3.0") numerically,
-/// segment by segment, not lexicographically ("2.10.0" must beat "2.9.0").
-///
+/// Compares dotted versions numerically per segment, so "2.10.0" beats "2.9.0".
 /// Returns a negative number, zero or a positive number as [a] is older than,
 /// equal to or newer than [b].
 ///
-/// Tolerant by design, because tags are typed by hand on GitHub's website. A
-/// segment that is not a plain run of digits (`0-beta`, `x`, an empty string
-/// from `2..1`) counts as 0, and a missing segment counts as 0, so "2.3" ==
-/// "2.3.0" and a malformed tag compares as if the broken part were absent — it
-/// never throws, which is what keeps one odd tag from taking the whole update
-/// check down with it. One leading "v" is ignored for the same reason: a
-/// caller that hands in the raw tag should not have it read as 0.3.0.
+/// Tolerant, because tags are typed by hand: a non-numeric or missing segment
+/// counts as 0 ("2.3" == "2.3.0"), one leading "v" is ignored, and it never
+/// throws, so one odd tag can't take the whole check down.
 ///
-/// Compare by this, never by `PackageInfo.buildNumber`: the tag only carries
-/// MAJOR.MINOR.PATCH, and the tag and the `+BUILD` suffix are free to diverge.
+/// Compare by this, never by `PackageInfo.buildNumber`: tags carry only
+/// MAJOR.MINOR.PATCH and diverge from the `+BUILD` suffix.
 int compareVersions(String a, String b) {
   final left = _versionSegments(a);
   final right = _versionSegments(b);
@@ -127,13 +108,13 @@ List<int> _versionSegments(String version) {
   return [for (final part in v.split('.')) _segmentValue(part)];
 }
 
-/// Digits only: `int.tryParse` alone would also accept "+1" and "-1", and a
-/// negative segment would sort a release *below* a missing one.
+/// Digits only: `int.tryParse` alone accepts "+1" and "-1", and a negative
+/// segment would sort below a missing one.
 int _segmentValue(String segment) =>
     RegExp(r'^\d+$').hasMatch(segment) ? (int.tryParse(segment) ?? 0) : 0;
 
-/// "v2.3.0" -> "2.3.0". Only the leading "v" goes; whatever follows is left
-/// alone for [compareVersions] to be forgiving about.
+/// "v2.3.0" -> "2.3.0". Only the leading "v" is removed; [compareVersions]
+/// copes with anything odd after it.
 String versionFromTag(String tag) {
   final trimmed = tag.trim();
   return trimmed.startsWith('v') || trimmed.startsWith('V')
@@ -141,20 +122,12 @@ String versionFromTag(String tag) {
       : trimmed;
 }
 
-/// Whether [body] — a release's notes — marks that release as mandatory.
+/// Whether [body], a release's notes, marks the release as mandatory: a line
+/// that is exactly `FORCE_UPDATE` after trimming, ignoring case.
 ///
-/// The convention is a plain-text one, typed once into the notes on GitHub's
-/// website with nothing structured to maintain: a line that is, after
-/// trimming whitespace and ignoring case, exactly `FORCE_UPDATE`.
-///
-/// "On its own line" is the whole line, not a substring of it. A sentence that
-/// merely mentions the token ("We removed the FORCE_UPDATE flag"), a longer
-/// word that contains it (`NO_FORCE_UPDATE`, `FORCE_UPDATES`) and a line with
-/// extra punctuation (`FORCE_UPDATE:`) all fail to match, so release notes can
-/// talk about the mechanism without triggering it. Markdown decoration also
-/// counts as extra text — `**FORCE_UPDATE**` or a code-formatted token is not
-/// the marker; type it bare. Line endings of every kind (`\n`, `\r\n`, `\r`)
-/// split lines, because GitHub's web editor submits `\r\n`.
+/// Whole line only, so notes can mention the mechanism without triggering it:
+/// `NO_FORCE_UPDATE`, `FORCE_UPDATE:` and `**FORCE_UPDATE**` don't match. Lines
+/// split on `\n`, `\r\n` and `\r`, because GitHub's web editor submits `\r\n`.
 bool hasForceUpdateMarker(String body) {
   for (final line in const LineSplitter().convert(body)) {
     if (line.trim().toUpperCase() == forceUpdateMarker) return true;
@@ -162,11 +135,8 @@ bool hasForceUpdateMarker(String body) {
   return false;
 }
 
-/// [notes] with the [forceUpdateMarker] line removed, ready to show.
-///
-/// The marker is an instruction to the app, not something for a tester to
-/// read. Blank lines the removal leaves at either end are trimmed too; blank
-/// lines between paragraphs stay.
+/// [notes] with the [forceUpdateMarker] line removed. Blank lines left at either
+/// end are trimmed; blank lines between paragraphs stay.
 String releaseNotesForDisplay(String notes) {
   final kept = [
     for (final line in const LineSplitter().convert(notes))
@@ -175,14 +145,11 @@ String releaseNotesForDisplay(String notes) {
   return kept.join('\n').trim();
 }
 
-/// Asks GitHub which releases the running build is missing.
-///
-/// Takes its [http.Client] by constructor injection so tests can hand in a
-/// fake and never touch the network.
+/// Asks GitHub which releases the running build is missing. The [http.Client]
+/// is injected so tests never touch the network.
 class UpdateChecker {
-  /// [timeout] bounds the whole request. The default is long enough for a slow
-  /// mobile connection and short enough that the Settings row's spinner does not
-  /// turn into a hang; tests pass something tiny.
+  /// [timeout] bounds the whole request: long enough for a slow connection,
+  /// short enough that the Settings spinner doesn't look hung.
   UpdateChecker({
     required this._client,
     this._timeout = const Duration(seconds: 15),
@@ -191,23 +158,16 @@ class UpdateChecker {
   final http.Client _client;
   final Duration _timeout;
 
-  /// Hits GitHub's public, unauthenticated releases API for this repo,
-  /// fetches every release (first page — see below), drops drafts and
-  /// prereleases, and returns everything newer than [currentVersion] sorted
-  /// newest-first. Throws on any network/parse failure — the caller decides
-  /// how to treat that (silently, on launch; visibly, from the Settings
-  /// button).
+  /// Fetches the release list, drops drafts and prereleases, and returns
+  /// everything newer than [currentVersion], newest first. Throws on any
+  /// network or parse failure; the caller decides whether to surface it.
   ///
-  /// Known limit: the endpoint is paginated at 30 releases a page and only the
-  /// first page is read. That is deliberate, not an oversight. This repo ships
-  /// tags infrequently, and a tester is forced to update (see
-  /// `decideUpdateAction`) five releases behind — long before the list could
-  /// outgrow one page. If releases ever become frequent enough for that to
-  /// stop being true, this is where to follow the `Link` header.
+  /// Reads only the first page (30 releases). That's enough, since an update
+  /// turns mandatory five releases behind; follow the `Link` header here if
+  /// releases ever become frequent.
   ///
-  /// Releases are ordered by version, not by publish date: a hotfix tagged
-  /// v2.1.1 *after* v2.2.0 still ranks below it. A release that cannot be
-  /// understood (no tag) is skipped rather than failing the whole check.
+  /// Sorted by version, not publish date, so a hotfix tagged v2.1.1 after
+  /// v2.2.0 still ranks below it. An entry with no tag is skipped.
   Future<ReleaseStatus> checkForUpdates({required String currentVersion}) async {
     final http.Response response = await _client.get(
       Uri.parse(releasesApiUrl),
@@ -222,9 +182,8 @@ class UpdateChecker {
 
     final Object? decoded;
     try {
-      // Decoded as UTF-8 regardless of the declared charset: JSON is UTF-8,
-      // and the `http` package falls back to Latin-1 when a response omits
-      // one, which would garble the dashes and quotes in release notes.
+      // Always UTF-8: `http` falls back to Latin-1 when no charset is declared,
+      // which garbles the dashes and quotes in release notes.
       decoded = jsonDecode(utf8.decode(response.bodyBytes));
     } on FormatException catch (e) {
       throw UpdateCheckException('The release list was not valid JSON: ${e.message}');
@@ -248,12 +207,8 @@ class UpdateChecker {
     return ReleaseStatus(newerReleases: newer, currentVersion: currentVersion);
   }
 
-  /// One list entry as a [ReleaseInfo], or null when it is a draft, a
-  /// prerelease, or has no usable tag.
-  ///
-  /// The list endpoint returns drafts (to anyone who can see them) and
-  /// prereleases alongside real releases; neither is something to push onto a
-  /// tester.
+  /// One list entry as a [ReleaseInfo], or null for a draft, a prerelease or an
+  /// entry with no usable tag.
   static ReleaseInfo? _parseRelease(Object? entry) {
     if (entry is! Map<String, dynamic>) return null;
     if (entry['draft'] == true || entry['prerelease'] == true) return null;

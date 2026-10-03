@@ -10,30 +10,29 @@ import 'package:path_provider/path_provider.dart';
 
 import 'apk_asset_matcher.dart';
 
-/// The release asset that carries the published SHA-256 of each APK, in the
-/// shape the hand-generated `checksums.json` has always had:
+/// The release asset holding each APK's published SHA-256:
 /// `[{"Name", "Bytes", "SizeMB", "SHA256", "Path"}, ...]`.
 const String checksumsAssetName = 'checksums.json';
 
 /// The MIME type Android's package installer registers for.
 const String _apkMimeType = 'application/vnd.android.package-archive';
 
-/// Why an update could not be installed. The dialog turns each into a plain
-/// sentence; none of the exception text behind them is ever shown.
+/// Why an update could not be installed. The dialog shows a plain sentence for
+/// each; the exception text behind them is never shown.
 enum UpdateFailure {
   /// The APK did not arrive: no connection, a non-200 answer, a stalled or cut
-  /// off transfer, or a disk error writing it.
+  /// off transfer, or a disk error.
   download,
 
-  /// `checksums.json` is on the release but could not be used — it could not be
-  /// fetched, is not the expected shape, or has no entry for this APK. See
-  /// [UpdateInstaller.downloadAndVerify] for why that stops the install.
+  /// `checksums.json` is on the release but unusable: it couldn't be fetched,
+  /// has the wrong shape, or has no entry for this APK. See
+  /// [UpdateInstaller.downloadAndVerify].
   checksumUnavailable,
 
-  /// The downloaded file's SHA-256 is not the published one.
+  /// The downloaded file's SHA-256 doesn't match the published one.
   checksumMismatch,
 
-  /// Android would not take the verified file (see [UpdateInstaller.install]).
+  /// Android wouldn't take the verified file (see [UpdateInstaller.install]).
   installerNotLaunched,
 }
 
@@ -49,14 +48,13 @@ class UpdateInstallException implements Exception {
   String toString() => 'UpdateInstallException(${failure.name}): $message';
 }
 
-/// The tester backed out of the download. Not a failure, so not an
+/// The tester cancelled the download. Not a failure, so not an
 /// [UpdateInstallException].
 class UpdateCancelledException implements Exception {
   const UpdateCancelledException();
 }
 
-/// Lets the UI stop a download it started. Checked between chunks, so a
-/// cancel lands within one chunk of the tester's tap.
+/// Lets the UI stop a download. Checked between chunks.
 class UpdateCancelToken {
   bool _cancelled = false;
 
@@ -65,12 +63,11 @@ class UpdateCancelToken {
   void cancel() => _cancelled = true;
 }
 
-/// Byte progress. [total] is null when the server did not say how long the
-/// file is.
+/// Byte progress. [total] is null when the server didn't send a length.
 typedef DownloadProgress = void Function(int received, int? total);
 
-/// Hands a file to the platform to open. Injected so the order of operations
-/// (verify, *then* open) can be tested without a device.
+/// Opens a file with the platform. Injected so tests can check the order
+/// (verify, then open) without a device.
 typedef ApkOpener = Future<OpenResult> Function(String path);
 
 Future<OpenResult> _openWithPlatform(String path) =>
@@ -79,10 +76,8 @@ Future<OpenResult> _openWithPlatform(String path) =>
 /// Downloads a release's APK, checks it against the published checksum, and
 /// hands it to Android's package installer.
 ///
-/// The three outside dependencies — the HTTP client, the directory to
-/// download into, and the thing that opens the file — are constructor
-/// arguments so tests can supply fakes and never touch the network, the real
-/// filesystem layout or a device.
+/// The HTTP client, temp directory and file opener are constructor arguments so
+/// tests can fake them.
 class UpdateInstaller {
   UpdateInstaller({
     required this._client,
@@ -98,39 +93,32 @@ class UpdateInstaller {
   /// How long to wait for a server to start answering.
   static const Duration _connectTimeout = Duration(seconds: 30);
 
-  /// How long a download may go without a single byte arriving before it is
-  /// treated as dead. A stalled transfer would otherwise leave the progress bar
-  /// frozen forever.
+  /// How long a download may go without a byte arriving before it counts as
+  /// dead, so a stalled transfer doesn't freeze the progress bar forever.
   static const Duration _stallTimeout = Duration(seconds: 30);
 
-  /// Downloads [apk] into the temp directory and returns it once it is known to
+  /// Downloads [apk] into the temp directory and returns it once it's known to
   /// be the file the release published.
   ///
-  /// [checksumsUrl] is the release's `checksums.json` asset, or null when the
-  /// release has none. Null skips verification: releases that predate this
-  /// feature never had one, and refusing them would strand testers on exactly
-  /// the old builds that need to move. It is the *only* way verification is
-  /// skipped. A `checksums.json` that exists but cannot be fetched or parsed,
-  /// or that has no entry for this APK, fails with
-  /// [UpdateFailure.checksumUnavailable] instead of installing an unverified
-  /// file — the publisher put the file there to be checked against. The
-  /// checksums are read *before* the download, so that failure costs a few
-  /// kilobytes rather than a 70MB transfer.
+  /// [checksumsUrl] is the release's `checksums.json` asset, or null if it has
+  /// none. Null is the only way verification is skipped: releases that predate
+  /// checksums never had one, and refusing them would strand testers on the old
+  /// builds that most need to move. A `checksums.json` that exists but can't be
+  /// fetched or parsed, or has no entry for this APK, fails with
+  /// [UpdateFailure.checksumUnavailable] rather than installing unverified. It
+  /// is read *before* the download, so that failure costs kilobytes, not 70MB.
   ///
-  /// What this protects against: a corrupt or truncated download. It does not
-  /// defend against a tampered release, since the checksums come from the same
-  /// place as the APK — that is Android's job, which refuses to install an
-  /// update signed with a different key.
+  /// This guards against a corrupt or truncated download, not a tampered
+  /// release: the checksums come from the same place as the APK. Android covers
+  /// that by refusing an update signed with a different key.
   ///
-  /// On *any* failure — a download error, a cancel, a mismatch — the file is
-  /// deleted before the exception leaves, so temp storage never keeps a partial
-  /// or rejected APK. A file that fails its checksum is never returned, so
-  /// nothing downstream can offer to install it. Any APK left from an earlier
-  /// attempt is cleared first.
+  /// On any failure (download error, cancel, mismatch) the file is deleted
+  /// before the exception leaves, so a partial or rejected APK is never kept or
+  /// returned. APKs from earlier attempts are cleared first.
   ///
-  /// [onVerifying] fires once, after the last byte lands and before hashing
-  /// starts, so the UI can swap its progress bar for a "verifying" state.
-  /// Throws [UpdateInstallException] or [UpdateCancelledException].
+  /// [onVerifying] fires once, after the last byte lands and before hashing, so
+  /// the UI can swap its progress bar for a "verifying" state. Throws
+  /// [UpdateInstallException] or [UpdateCancelledException].
   Future<File> downloadAndVerify({
     required ApkAsset apk,
     String? checksumsUrl,
@@ -143,16 +131,14 @@ class UpdateInstaller {
 
     final dir = await _tempDirectory();
     await _clearStaleApks(dir);
-    // The asset name is the file name, so a stray separator in it must not be
-    // able to walk out of the temp directory.
+    // A separator in the asset name must not walk out of the temp directory.
     final file = File('${dir.path}/${apk.name.replaceAll(RegExp(r'[\\/]'), '_')}');
 
     try {
       await _download(apk.url, file, onProgress, cancel);
       if (expectedSha256 != null) {
         onVerifying?.call();
-        // Off the main isolate: hashing 25-70MB is long enough to drop frames
-        // out from under the progress UI.
+        // Off the main isolate: hashing 25-70MB would drop frames.
         final actual = await Isolate.run(() => _sha256OfFile(file.path));
         if (actual.toLowerCase() != expectedSha256.toLowerCase()) {
           throw const UpdateInstallException(
@@ -176,17 +162,15 @@ class UpdateInstaller {
 
   /// Hands a verified [apk] to Android's package installer.
   ///
-  /// Returns normally when the install intent launched. That is *all* it
-  /// means: the system installer now owns the screen and may still be waiting
-  /// on the tester, who can back out of it, or has to first allow installs from
-  /// this app — Android shows that prompt itself because the manifest declares
-  /// `REQUEST_INSTALL_PACKAGES`. There is no callback for how it ends. A
-  /// successful install replaces this process, so the only outcome the app
-  /// ever observes is the tester coming back to it.
+  /// Returning normally means only that the install intent launched. The system
+  /// installer now owns the screen and may still be waiting on the tester, who
+  /// can back out or must first allow installs from this app (a prompt Android
+  /// shows itself, because the manifest declares `REQUEST_INSTALL_PACKAGES`).
+  /// There is no callback, and a successful install replaces this process, so
+  /// the only outcome the app ever sees is the tester coming back.
   ///
   /// Anything other than a launch deletes the file and throws
-  /// [UpdateFailure.installerNotLaunched]; the plugin's own message is kept on
-  /// the exception for logs.
+  /// [UpdateFailure.installerNotLaunched], keeping the plugin's message for logs.
   Future<void> install(File apk) async {
     final OpenResult result;
     try {
@@ -204,9 +188,8 @@ class UpdateInstaller {
     }
   }
 
-  /// Deletes a file [downloadAndVerify] returned that is not going to be
-  /// installed after all — the tester cancelled in the instant between the last
-  /// byte arriving and the install starting.
+  /// Deletes a file [downloadAndVerify] returned that won't be installed after
+  /// all: the tester cancelled between the last byte and the install.
   Future<void> discard(File apk) => _deleteQuietly(apk);
 
   Future<void> _download(
@@ -215,8 +198,8 @@ class UpdateInstaller {
     DownloadProgress? onProgress,
     UpdateCancelToken? cancel,
   ) async {
-    // Redirects are followed by default, which this needs: a release asset's
-    // browser_download_url answers 302 and the bytes live on GitHub's CDN.
+    // Redirects (followed by default) are needed: a release asset's
+    // browser_download_url answers 302 to GitHub's CDN.
     final response =
         await _client.send(http.Request('GET', Uri.parse(url))).timeout(_connectTimeout);
     if (response.statusCode != 200) {
@@ -241,9 +224,8 @@ class UpdateInstaller {
       await sink.close();
     }
 
-    // A connection that closes early can end the stream without an error. When
-    // the length was announced, holding the file to it catches a short file
-    // even if the release has no checksum to catch it for us.
+    // A connection closing early can end the stream without an error. Checking
+    // the announced length catches a short file even when there's no checksum.
     if (total != null && received != total) {
       throw UpdateInstallException(
         UpdateFailure.download,
@@ -270,13 +252,12 @@ class UpdateInstaller {
       throw UpdateInstallException(UpdateFailure.checksumUnavailable, '$e');
     }
 
-    // PowerShell's ConvertTo-Json turns a one-element list into a bare object,
-    // so a release with a single APK can have been generated that way.
+    // PowerShell's ConvertTo-Json turns a one-element list into a bare object.
     final entries = decoded is List ? decoded : [decoded];
     for (final entry in entries) {
       if (entry is! Map) continue;
-      // Keys are matched ignoring case: the hand-generated file is PowerShell's
-      // (`Name`, `SHA256`) and nothing should hinge on that capitalisation.
+      // Keys match case-insensitively; the hand-generated file uses PowerShell's
+      // `Name` and `SHA256`.
       final fields = {
         for (final e in entry.entries) e.key.toString().toLowerCase(): e.value,
       };
@@ -291,11 +272,9 @@ class UpdateInstaller {
     );
   }
 
-  /// Removes APKs an earlier attempt left in [dir] — including the one that
-  /// installed the version now running — so the cache holds at most one.
-  ///
-  /// Only files matching the release-asset naming are touched; this is the
-  /// app's cache directory and other things live in it.
+  /// Removes APKs earlier attempts left in [dir], including the one that
+  /// installed the running version, so the cache holds at most one. Only files
+  /// matching the release-asset naming are touched; other things live here.
   static Future<void> _clearStaleApks(Directory dir) async {
     try {
       await for (final entity in dir.list()) {
@@ -315,7 +294,6 @@ class UpdateInstaller {
   }
 }
 
-/// SHA-256 of the file at [path], streamed so it is never held in memory whole.
-/// Top level so [Isolate.run] can send it to another isolate.
+/// SHA-256 of the file at [path], streamed. Top level so [Isolate.run] can use it.
 Future<String> _sha256OfFile(String path) async =>
     (await sha256.bind(File(path).openRead()).first).toString();

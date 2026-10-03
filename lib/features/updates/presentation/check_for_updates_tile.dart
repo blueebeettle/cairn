@@ -6,24 +6,15 @@ import '../../../data/providers/update_providers.dart';
 import '../../../theme/app_theme.dart';
 import 'update_dialog.dart';
 
-/// Settings → About → "Check for updates".
+/// Settings → About → "Check for updates". The caller shows it only where the
+/// updater exists (see [updatesSupportedProvider]).
 ///
-/// Shown only where the updater exists (see [updatesSupportedProvider]); the
-/// caller decides that, so on iOS and macOS there is no row at all rather than
-/// one that silently does nothing.
-///
-/// Runs the same policy as the launch check — [decideUpdateAction] — and opens
-/// the same dialogs, so a manual check cannot offer a bypassable dialog where
-/// the automatic one would have forced the update.
-///
-/// Two deliberate differences from the launch check, both because the tester
-/// asked this time:
-/// * A failure is reported, in plain words, rather than swallowed.
-/// * "Later" is not honoured. [decideUpdateAction] is handed no declined
-///   version, so a release the tester previously dismissed is offered again
-///   instead of the row claiming they are up to date when they are not. This
-///   cannot weaken a mandatory update — those never consult the declined
-///   version.
+/// Uses the same [decideUpdateAction] policy and dialogs as the launch check, so
+/// a manual check can't offer a dismissible dialog where the automatic one would
+/// force the update. Two differences, since the tester asked this time:
+/// * A failure is reported rather than swallowed.
+/// * "Later" isn't honoured: no declined version is passed, so a release the
+///   tester dismissed is offered again. Mandatory updates never consult it.
 class CheckForUpdatesTile extends ConsumerStatefulWidget {
   const CheckForUpdatesTile({super.key});
 
@@ -48,8 +39,7 @@ class _CheckForUpdatesTileState extends ConsumerState<CheckForUpdatesTile> {
           .checkForUpdates(currentVersion: currentVersion);
       action = decideUpdateAction(status: status, lastSkippedVersion: null);
     } catch (_) {
-      // No exception text, no stack trace: the tester needs to know it did not
-      // work and that trying again later is reasonable, nothing more.
+      // Deliberately no exception text: just that it failed and may be retried.
       if (mounted) setState(() => _state = _CheckState.failed);
       return;
     }
@@ -89,8 +79,7 @@ class _CheckForUpdatesTileState extends ConsumerState<CheckForUpdatesTile> {
         subtitleColor = tokens.danger;
     }
 
-    // No leading icon: the rest of the About card has none, and this row sits
-    // between them.
+    // No leading icon, to match the rest of the About card.
     return ListTile(
       title: const Text('Check for updates'),
       subtitle: Text(
