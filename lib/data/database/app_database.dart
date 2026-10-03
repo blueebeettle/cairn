@@ -80,9 +80,34 @@ class AppDatabase extends _$AppDatabase {
         },
       );
 
-  /// Stepped per-version migration scaffolding for future schema version bumps.
+  /// One per-version migration step, run in order for every version between the
+  /// file's `user_version` and [schemaVersion].
+  ///
+  /// Steps 5 and 6 exist for a database written by an older build, which can
+  /// come back from an Android Auto Backup restore onto a fresh install. They
+  /// used to be missing: `onUpgrade` ran no step at all, then `_createIndexes`
+  /// indexed `habit_entries`, which a schema-4 file does not have. That threw out
+  /// of `main()` before `runApp`, and the launch screen stayed up with nothing
+  /// shown.
+  ///
+  /// Each step only creates the tables its version introduced. `createTable` is
+  /// `CREATE TABLE IF NOT EXISTS`, so a step is safe to re-run. The legacy
+  /// single-reminder columns on `tasks` (and any on `habits`) are left where
+  /// they are rather than dropped or converted: the new reminder tables are read
+  /// models rebuilt from the event log, so they correctly start empty, and the
+  /// old columns are nullable and unread.
   Future<void> _migrateStep(Migrator m, int targetVersion) async {
     switch (targetVersion) {
+      case 5:
+        // habits and habit_entries (SPEC.md §10).
+        await m.createTable(habits);
+        await m.createTable(habitEntries);
+        break;
+      case 6:
+        // task_reminder_offsets and habit_reminder_times (SPEC.md §10.4/§11).
+        await m.createTable(taskReminderOffsets);
+        await m.createTable(habitReminderTimes);
+        break;
       case 7:
         // Future schema version 7 additions.
         break;
