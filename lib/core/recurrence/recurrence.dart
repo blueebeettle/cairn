@@ -219,12 +219,10 @@ class RecurrenceRule {
     return TimeService.addDays(from, 30);
   }
 
-  /// Day-of-month rules in short months.
-  ///
-  /// RFC 5545 says BYMONTHDAY=31 simply does not occur in a 30-day month, so
-  /// the month is skipped. That is wrong for a task app: someone who sets
-  /// "pay rent on the 31st" expects February to fire on the 28th, not to
-  /// vanish. So this CLAMPS to the last day of the month instead.
+  /// Day-of-month rules in short months. RFC 5545 skips the month when
+  /// BYMONTHDAY=31 doesn't occur in it, which is wrong for a task app: "pay
+  /// rent on the 31st" should fire on the 28th in February, not vanish. So this
+  /// CLAMPS to the last day of the month instead.
   static String _clampToMonth(int year, int month, int day) {
     final lastDay = DateTime.utc(year, month + 1, 0).day;
     final d = day > lastDay ? lastDay : day;
@@ -268,23 +266,22 @@ class RecurrenceRule {
 
 /// The due date of the next instance after one is completed, per SPEC.md §2.6.
 ///
-/// [scheduledDate] is the due date of the instance just completed.
-/// [completedDate] is the logical date it was actually ticked off.
+/// [scheduledDate] is the due date of the instance just completed and
+/// [completedDate] the logical date it was actually ticked off.
 /// [todayLocalDate] is used only by [RecurrenceMode.onSchedule], to avoid
-/// generating a backlog — see below.
+/// generating a backlog.
 ///
-/// The two modes differ only in which anchor they advance from:
+/// The two modes differ only in the anchor they advance from:
 ///
 ///   onSchedule      -> advance from scheduledDate
 ///   afterCompletion -> advance from completedDate
 ///
-/// On the backlog question: if you complete a monthly "1st of the month" task
-/// six weeks late, advancing from the scheduled date lands on a due date
-/// that is already in the past. Generating that instance, and the next, and
-/// the next, buries the user in overdue copies of one task. So onSchedule
-/// keeps advancing until it reaches a date that is not before today. The
-/// series stays anchored to the 1st — which is what "does not shift the
-/// series" means — without manufacturing a backlog.
+/// Backlog: completing a monthly "1st of the month" task six weeks late and
+/// advancing from the scheduled date lands on a due date already in the past,
+/// and generating that instance, then the next, buries the user in overdue
+/// copies of one task. So onSchedule keeps advancing until it reaches a date
+/// not before today. The series stays anchored to the 1st, which is what "does
+/// not shift the series" means, without manufacturing a backlog.
 String? nextOccurrence({
   required RecurrenceRule? rule,
   required RecurrenceMode mode,
