@@ -382,12 +382,12 @@ class HomeScreenWidgetService {
 
   /// Syncs current app state to widgets from Riverpod WidgetRef.
   ///
-  /// Several providers can fire their listeners within the same frame, and one
-  /// full sync is ~20 awaited platform writes. Left unserialised those calls
-  /// interleave and the *stalest* one finishes last, so the widgets end up
-  /// showing whatever the earliest invocation happened to read — which at
-  /// startup is an empty list. Run one pass at a time and coalesce everything
-  /// that arrives meanwhile into a single trailing pass that re-reads fresh.
+  /// Several providers can fire within one frame, and a full sync is ~20
+  /// awaited platform writes. Unserialised, those calls interleave and the
+  /// *stalest* one finishes last, so the widgets show whatever the earliest
+  /// invocation read (an empty list at startup). This runs one pass at a time
+  /// and coalesces everything that arrives meanwhile into a single trailing
+  /// pass that re-reads fresh.
   Future<void> syncAllWidgets(WidgetRef ref) {
     if (!canUpdate) return Future<void>.value();
     final inFlight = _inFlightSync;
@@ -452,15 +452,15 @@ final homeScreenWidgetServiceProvider = Provider<HomeScreenWidgetService>((ref) 
   return HomeScreenWidgetService();
 });
 
-/// Top-level callback invoked by Android/iOS background receiver when a home widget
-/// action is triggered (e.g. checking off a habit, completing a task, or
+/// Top-level callback invoked by the Android/iOS background receiver when a
+/// home widget action is triggered (checking off a habit, completing a task,
 /// driving the focus timer).
 ///
-/// This runs in its own background isolate with no access to the app's
-/// Riverpod container, so every handler builds throwaway repositories over a
-/// fresh [AppDatabase] and writes to the same tables the in-app controllers
-/// write to. The database is the shared source of truth; the app re-reads it
-/// on resume (see `TimerController.reconcileOnResume`).
+/// It runs in its own isolate with no access to the app's Riverpod container,
+/// so every handler builds throwaway repositories over a fresh [AppDatabase]
+/// and writes to the same tables the in-app controllers do. The database is the
+/// shared source of truth; the app re-reads it on resume (see
+/// `TimerController.reconcileOnResume`).
 @pragma('vm:entry-point')
 Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
   if (uri == null || uri.scheme != 'cairn') return;
@@ -551,11 +551,11 @@ Future<void> _handleToggleTask(String? taskId) async {
       deviceId: deviceId,
     );
     // No ReminderService here on purpose: it owns a notification plugin that
-    // is not safely constructible in a headless isolate, and TasksRepository
+    // isn't safely constructible in a headless isolate, and TasksRepository
     // already treats it as optional (`reminderService?.cancelFor(...)`). The
     // cost is a completed task keeping its scheduled reminder until the app
-    // next reconciles; booting notifications in a short-lived isolate is a
-    // far worse trade.
+    // next reconciles; booting notifications in a short-lived isolate is a far
+    // worse trade.
     final tasksRepo = TasksRepository(
       db: db,
       eventsRepository: eventsRepo,
@@ -631,10 +631,10 @@ TimerState _timerStateFromRow({
 
 /// Applies a timer action straight to the database from a background isolate.
 ///
-/// Shared by the home-screen widget's buttons and the foreground-service
-/// notification's Pause/Resume/Skip buttons. Both can be pressed while no
-/// main isolate exists, so neither can route through [TimerController] — the
-/// database is the source of truth and the app re-derives from it via
+/// Shared by the widget's buttons and the foreground-service notification's
+/// Pause/Resume/Skip buttons. Both can be pressed with no main isolate, so
+/// neither can route through [TimerController]; the database is the source of
+/// truth and the app re-derives from it via
 /// `TimerController.reconcileOnResume()` on next resume.
 ///
 /// Accepts the same action names as the widget: 'start', 'pause', 'resume',
