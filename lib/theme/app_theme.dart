@@ -1,5 +1,3 @@
-// app_theme.dart
-//
 // Palette extracted from the blueebeettle.in stylesheet, mapped to Material 3.
 //
 // FROM THE SITE (verbatim):
@@ -11,11 +9,11 @@
 //   black / white  text
 //   Raleway (body) + Bricolage Grotesque (display)
 //
-// ADDED (the site defines none of these, an app needs all of them):
-//   neutrals, borders, muted text, semantic states, chart series, heatmap ramp,
-//   and an entire dark theme.
+// ADDED (the site defines none of these): neutrals, borders, muted text,
+// semantic states, chart series, heatmap ramp, and an entire dark theme.
 //
-// CONTRAST (WCAG AA needs 4.5:1 for body text, 3:1 for large text and UI edges):
+// CONTRAST (WCAG AA needs 4.5:1 for body text, 3:1 for large text and UI
+// edges):
 //   #590D86 on #FAF3F0 ....... 10.48:1   safe anywhere
 //   #40128B on #FAF3F0 ....... 11.41:1   safe anywhere
 //   #661694 on #FAF3F0 ........ 9.08:1   safe anywhere
@@ -24,15 +22,13 @@
 //   white   on #590D86 ....... 11.50:1   safe
 //
 // The one trap: #590D86 scores 1.61:1 on a dark ground, so the brand purple
-// CANNOT carry over into dark mode. Dark mode leads with a lightened purple
+// cannot carry over into dark mode. Dark mode leads with a lightened purple
 // (#C08FE8, 7.35:1) and demotes #40128B to a container fill.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Raw palette
-// ─────────────────────────────────────────────────────────────────────────────
 
 abstract final class BrandColors {
   // From the site
@@ -42,8 +38,8 @@ abstract final class BrandColors {
   static const violetDeep = Color(0xFF40128B);
   static const lavender = Color(0xFFBA7DD6);
 
-  // Derived light neutrals — warm, biased toward the purple so they read as
-  // chosen rather than inherited grey.
+  // Derived light neutrals, biased toward the purple so they read as chosen
+  // rather than inherited grey.
   static const lightSurface = Color(0xFFFFFFFF);
   static const lightSurfaceLow = Color(0xFFF2E7E2);
   static const lightSurfaceHigh = Color(0xFFFBF7F5);
@@ -66,9 +62,7 @@ abstract final class BrandColors {
   static const darkTextMuted = Color(0xFF9385A0); //  5.38:1
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // App-specific tokens Material 3 has no slot for
-// ─────────────────────────────────────────────────────────────────────────────
 
 @immutable
 class AppTokens extends ThemeExtension<AppTokens> {
@@ -83,8 +77,8 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.heatmap,
   });
 
-  /// Reserved for state. Never use these decoratively — the moment green means
-  /// "a category" as well as "good", every stats screen becomes unreadable.
+  /// Reserved for state. Never use these decoratively: if green also means "a
+  /// category", every stats screen becomes unreadable.
   final Color success;
   final Color warning;
   final Color danger;
@@ -196,9 +190,7 @@ extension AppTokensX on BuildContext {
   ColorScheme get colors => Theme.of(this).colorScheme;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Colour schemes
-// ─────────────────────────────────────────────────────────────────────────────
 
 const _lightScheme = ColorScheme(
   brightness: Brightness.light,
@@ -274,9 +266,7 @@ const _darkScheme = ColorScheme(
   inversePrimary: BrandColors.purple,
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Typography — Bricolage Grotesque for display, Raleway for everything else
-// ─────────────────────────────────────────────────────────────────────────────
+// Typography: Bricolage Grotesque for display, Raleway for everything else
 
 TextTheme _textTheme(ColorScheme scheme) {
   final display = GoogleFonts.bricolageGrotesqueTextTheme();
@@ -316,10 +306,10 @@ TextTheme _textTheme(ColorScheme scheme) {
         fontFeatures: tabular),
   ).apply(
     bodyColor: scheme.onSurface,
-    // Material 3 puts headings on onSurface, not on the brand colour. The
-    // purple stays where it earns attention — the app bar title, active
-    // controls, figures that are the point of a screen. Twenty purple headings
-    // on one screen is what made the stats pages shout.
+    // Material 3 puts headings on onSurface, not on the brand colour. Purple
+    // stays where it earns attention (app bar title, active controls, key
+    // figures); twenty purple headings on one screen made the stats pages
+    // shout.
     displayColor: scheme.onSurface,
   );
 }
@@ -335,9 +325,7 @@ TextStyle statFigure(BuildContext context) =>
       fontFeatures: const [FontFeature.tabularFigures()],
     );
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Themes
-// ─────────────────────────────────────────────────────────────────────────────
 
 ThemeData _build(ColorScheme scheme, AppTokens tokens) {
   final text = _textTheme(scheme);
@@ -364,10 +352,9 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
       space: 1,
     ),
 
-    // ── Buttons ─────────────────────────────────────────────────────────
-    // Material 3 buttons are stadium-shaped with a 40dp minimum height.
-    // The site's 3px-outlined 10px-radius button was a web button; it is
-    // replaced here because the app follows Material, not the marketing page.
+    // Buttons: Material 3 stadium shape, 40dp minimum height. The site's
+    // 3px-outlined 10px-radius button was a web button; the app follows
+    // Material.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         shape: const StadiumBorder(),
@@ -432,17 +419,14 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
       ),
     ),
 
-    // ── Containers ──────────────────────────────────────────────────────
-    // M3 shape scale: xs 4, sm 8, md 12, lg 16, xl 28.
-    // Pointed at the same surface, radius and flatness as `CairnCard`, so a
-    // plain `Card()` on a screen that has not been hand-built still lands
-    // inside the card system. Flat: the shadowed version was tried and did
-    // not suit the palette, so a card is told apart from the page by its fill
-    // alone.
+    // Containers: M3 shape scale xs 4, sm 8, md 12, lg 16, xl 28. Matches the
+    // surface, radius and flatness of `CairnCard`, so a plain `Card()` still
+    // lands inside the card system. Flat on purpose: a shadowed card didn't
+    // suit the palette, so cards are told apart from the page by fill alone.
     //
-    // The fill is a brightness switch for the usual reason — dark's
-    // `surfaceContainerLowest` (#120D17) is *darker* than the page ground
-    // (#17111C), which made every dark card read as a hole in the screen.
+    // The fill is a brightness switch because dark's `surfaceContainerLowest`
+    // (#120D17) is *darker* than the page ground (#17111C), which made every
+    // dark card read as a hole in the screen.
     cardTheme: CardThemeData(
       color: scheme.brightness == Brightness.dark
           ? scheme.surfaceContainer
@@ -479,7 +463,7 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
       subtitleTextStyle: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
     ),
 
-    // ── Chips ───────────────────────────────────────────────────────────
+    // Chips
     chipTheme: ChipThemeData(
       backgroundColor: Colors.transparent,
       selectedColor: scheme.secondaryContainer,
@@ -493,7 +477,7 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     ),
 
-    // ── Input ───────────────────────────────────────────────────────────
+    // Input
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: scheme.surfaceContainerHighest,
@@ -512,7 +496,7 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
       labelStyle: text.bodyLarge?.copyWith(color: scheme.onSurfaceVariant),
     ),
 
-    // ── Navigation ──────────────────────────────────────────────────────
+    // Navigation
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: scheme.surfaceContainer,
       surfaceTintColor: Colors.transparent,
@@ -546,7 +530,7 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
       labelStyle: text.titleSmall,
     ),
 
-    // ── Feedback ────────────────────────────────────────────────────────
+    // Feedback
     progressIndicatorTheme: ProgressIndicatorThemeData(
       color: scheme.primary,
       linearTrackColor: scheme.surfaceContainerHighest,
@@ -573,7 +557,7 @@ ThemeData _build(ColorScheme scheme, AppTokens tokens) {
       textStyle: text.bodySmall?.copyWith(color: scheme.onInverseSurface),
     ),
 
-    // ── Selection controls ──────────────────────────────────────────────
+    // Selection controls
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) =>
           states.contains(WidgetState.selected)
@@ -623,7 +607,3 @@ abstract final class AppTheme {
 //     darkTheme: AppTheme.dark,
 //     themeMode: ThemeMode.system,
 //   )
-//
-// pubspec.yaml:
-//   dependencies:
-//     google_fonts: ^6.2.1
