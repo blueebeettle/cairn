@@ -18,13 +18,10 @@ abstract final class RangeScope {
 /// A small heading that says which side of the range picker the group of
 /// numbers under it sits on.
 ///
-/// The Stats screen deliberately mixes the two kinds — the hero and the journey
-/// follow the picker, the activity heatmap and two of the tiles do not — and
-/// each already carried a qualifier word in its own label plus a long-press
-/// tooltip. Neither is enough: a qualifier in an 11px tile label and a tooltip
-/// nobody long-presses both read, at a glance, as "I tapped Week and half of
-/// this did not change". So the two groups are separated and each is headed,
-/// visibly and permanently, with no interaction needed to find out.
+/// The Stats screen mixes the two kinds, and a qualifier in an 11px tile label
+/// plus a long-press tooltip both read, at a glance, as "I tapped Week and half
+/// of this didn't change". So the two groups are separated and headed, visibly
+/// and permanently, with no interaction needed.
 class RangeScopeHeading extends StatelessWidget {
   /// The numbers under this move when the range picker does.
   const RangeScopeHeading.follows({super.key})
@@ -66,14 +63,11 @@ class RangeScopeHeading extends StatelessWidget {
   }
 }
 
-/// A small persistent badge for a card that does not move with the range
-/// picker above it — the activity heatmaps, and the streak list on "More
-/// stats".
-///
-/// A pill rather than more subheading text: the heatmap already had an
-/// accurate "last 365 days" line that was easy to read past, and a filled
-/// shape with an icon is what makes the eye stop on it. Visible always; it
-/// never depends on a tooltip.
+/// A small persistent badge for a card that does not move with the range picker
+/// above it: the activity heatmaps and the streak list on "More stats". A pill
+/// rather than more subheading text, because a filled shape with an icon is
+/// what makes the eye stop where a "last 365 days" line was easy to read past.
+/// Always visible; never depends on a tooltip.
 class FixedRangePill extends StatelessWidget {
   const FixedRangePill({super.key});
 

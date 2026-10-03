@@ -25,26 +25,22 @@ import 'widgets/range_scope.dart';
 /// and `Stats.Dark.dc.html`.
 ///
 /// Five things, in order: the range picker, a hero card for the selected
-/// period's completion rate, the "Your journey" cairn trail, the focus
-/// activity heatmap, and four single-number tiles. Everything the
-/// pre-redesign screen showed below those — the peak window, the day-of-week
-/// profile, the time allocation, interruptions, the focus rating, the habit
-/// leaderboard and the habit heatmap — moved to [StatsDetailScreen] behind the
-/// "See more" row at the bottom. No metric was dropped in the move.
+/// period's completion rate, the "Your journey" cairn trail, the focus activity
+/// heatmap, and four single-number tiles. The rest (peak window, day-of-week
+/// profile, time allocation, interruptions, focus rating, habit leaderboard,
+/// habit heatmap) lives in [StatsDetailScreen] behind "See more".
 ///
 /// One departure from the boards: they headline the hero with "Your best month
-/// yet". Nothing in this app tracks month-over-month history, so that claim
-/// could not be checked before making it. The streak-versus-personal-best line
-/// takes its place — same encouraging role, and true.
+/// yet", but nothing in this app tracks month-over-month history, so that claim
+/// couldn't be checked. The streak-versus-personal-best line takes its place.
 ///
 /// **Not everything follows the range picker, on purpose, and the screen says
 /// which.** The hero, the journey trail and two of the tiles are recomputed for
-/// the selected range. The activity heatmap (a trailing year), the all-time best
-/// streak and this month's freezes are not — each is a fixed window by design,
-/// and each was already computed correctly for its own. What was missing was any
-/// visible difference between the two kinds, so the tiles are split into a
-/// "follows the range" pair and a "same for every range" pair under their own
-/// headings, and the heatmap wears a [FixedRangePill]. See [RangeScope].
+/// the selected range. The activity heatmap (a trailing year), the all-time
+/// best streak and this month's freezes are fixed windows by design, so the
+/// tiles are split into a "follows the range" pair and a "same for every range"
+/// pair under their own headings, and the heatmap wears a [FixedRangePill]. See
+/// [RangeScope].
 class StatsScreen extends ConsumerWidget {
   const StatsScreen({super.key});
 
@@ -125,11 +121,9 @@ class StatsScreen extends ConsumerWidget {
   // ── Range picker ───────────────────────────────────────────────────────────
 
   /// The boards' pill: a tinted track with one filled segment, not Material's
-  /// outlined `SegmentedButton`.
-  ///
-  /// `Semantics(inMutuallyExclusiveGroup)` is what keeps this readable to a
-  /// screen reader now that it is four plain tap targets rather than a real
-  /// radio group.
+  /// outlined `SegmentedButton`. `Semantics(inMutuallyExclusiveGroup)` keeps it
+  /// readable to a screen reader now that it is four plain tap targets rather
+  /// than a real radio group.
   Widget _buildRangePicker(
     BuildContext context,
     WidgetRef ref,
@@ -224,9 +218,9 @@ class StatsScreen extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // The boards say "This month" because 30d is the default range.
-              // The real label follows the picker, so switching to Week does
-              // not leave a card claiming to be about a month.
+              // The boards say "This month" because 30d is the default range;
+              // the real label follows the picker so Week doesn't leave a card
+              // claiming to be about a month.
               Expanded(child: CardChrome.sectionLabel(context, range.label)),
               if (trend != null) ...[
                 const SizedBox(width: 8),
@@ -281,12 +275,10 @@ class StatsScreen extends ConsumerWidget {
   }
 
   /// The hero's closing line: how the live streak sits against the all-time
-  /// best.
-  ///
-  /// Once the current run has caught the record there is no gap left to name,
-  /// so the "X more days" sentence would read as "0 more takes you past your
-  /// best". Deliberately not the milestone celebration's wording — the two
-  /// screens should not sound like the same paragraph twice.
+  /// best. Once the current run has caught the record there is no gap left to
+  /// name ("0 more takes you past your best"). Deliberately not the milestone
+  /// celebration's wording, so the two screens don't sound like the same
+  /// paragraph twice.
   static String _streakLine(FocusStats stats) {
     if (stats.currentStreakDays >= stats.longestStreakDays) {
       return "You're on your best streak yet.";
@@ -318,15 +310,15 @@ class StatsScreen extends ConsumerWidget {
     final tokens = context.tokens;
     final textTheme = Theme.of(context).textTheme;
 
-    // The Week range is the calendar week to date — at most a few days old.
+    // The Week range is the calendar week to date, at most a few days old.
     // Bucketed by week that is one sparse column, which reads as broken rather
-    // than as "it is only Tuesday", so it is drawn a stone per day instead.
-    // Every longer range keeps its weekly buckets.
+    // than "it is only Tuesday", so it is drawn a stone per day instead. Longer
+    // ranges keep weekly buckets.
     //
-    // Keyed off the range, and anchored on this week's own first day rather
-    // than the bundle's period start: for a frame after the picker moves the
-    // bundle can still be the previous range's, and a stale 30-day start here
-    // would draw a month of daily stones.
+    // Keyed off the range and anchored on this week's own first day rather than
+    // the bundle's period start: for a frame after the picker moves the bundle
+    // can still be the previous range's, and a stale 30-day start would draw a
+    // month of daily stones.
     final daily = range == StatsRange.week;
     final columns = daily
         ? [
@@ -377,9 +369,9 @@ class StatsScreen extends ConsumerWidget {
             children: [
               Expanded(child: CardChrome.sectionLabel(context, 'Your journey')),
               const SizedBox(width: 8),
-              // What one stone-stack stands for. The trail changes shape when
-              // the range moves between Week and the rest, and this is what
-              // says so, rather than leaving W1–W5 and M–T–W unexplained.
+              // What one stone-stack stands for. The trail changes shape
+              // between Week and the rest, and this says so rather than leaving
+              // W1–W5 and M–T–W unexplained.
               Text(
                 'By $unit',
                 style: textTheme.bodySmall?.copyWith(
@@ -492,14 +484,12 @@ class StatsScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 4),
-          // What the squares actually measure, and over what window. Neither
-          // was discoverable before: "Activity" alone reads as though it
-          // might be habit check-offs, and the 365-day window is fixed rather
-          // than following the range picker directly above it.
-          //
-          // The line is accurate but easy to read past, so it is paired with
-          // a badge. A Wrap: at a large font scale the badge drops beneath
-          // the line instead of squeezing it.
+          // What the squares measure, and over what window: "Activity" alone
+          // reads as though it might be habit check-offs, and the 365-day
+          // window is fixed rather than following the picker above it. Paired
+          // with a badge because the line is easy to read past; a Wrap so at
+          // large font scales the badge drops beneath the line instead of
+          // squeezing it.
           Wrap(
             spacing: 10,
             runSpacing: 6,
@@ -556,11 +546,10 @@ class StatsScreen extends ConsumerWidget {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     reverse: true, // Opens showing today
-                    // Two pixels of slack inside the viewport, which is
-                    // exactly what a milestone ring overhangs its cell by.
-                    // `Clip.none` would give the rings room too, but it also
-                    // lets the whole scrolled grid paint outside the card and
-                    // off the screen edge.
+                    // Two pixels of slack inside the viewport, exactly what a
+                    // milestone ring overhangs its cell by. `Clip.none` would
+                    // give the rings room too, but would let the whole scrolled
+                    // grid paint outside the card and off the screen edge.
                     padding: const EdgeInsets.all(2),
                     child: Row(
                       children: [
@@ -642,13 +631,11 @@ class StatsScreen extends ConsumerWidget {
   /// One heatmap square, with the milestone ring when the focus streak landed
   /// exactly on a `MilestoneThresholds` value that day.
   ///
-  /// Known limitation, inherited rather than introduced: the squares only go
-  /// back as far as the heatmap's own 365-day window, so a milestone the user
-  /// crossed two years ago has no square to be drawn on. The ring dates
-  /// themselves are computed over all history
+  /// Known limitation: squares only go back as far as the heatmap's 365-day
+  /// window, so a milestone crossed two years ago has no square to draw on. The
+  /// ring dates are computed over all history
   /// ([StatsRepository.watchMilestoneDates]), so nothing inside the window is
-  /// mis-numbered by the window's edge — it is only the display that is
-  /// bounded.
+  /// mis-numbered by the window's edge; only the display is bounded.
   Widget _buildHeatmapCell(
     BuildContext context,
     HeatmapCell? cell,
@@ -708,16 +695,11 @@ class StatsScreen extends ConsumerWidget {
 
   // ── Tiles: two that follow the range, two that never do ───────────────────
 
-  /// Four tiles in two groups, each under its own heading.
-  ///
-  /// They used to be one grid with the two range-independent tiles set
-  /// diagonally from each other, distinguished only by a qualifier word in an
-  /// 11px label and a tooltip. Nothing about the layout said that tapping
-  /// "Week" would move two of them and not the others. Grouping them — the
-  /// pair that follows the picker first, then the pair that reads the same at
-  /// every range — makes the split the first thing seen rather than something
-  /// found by long-pressing. The labels and tooltips stay as they were: the
-  /// heading says which group, the label still says which window.
+  /// Four tiles in two groups, each under its own heading: the pair that
+  /// follows the picker first, then the pair that reads the same at every
+  /// range. Grouping makes the split the first thing seen rather than something
+  /// found by long-pressing; labels and tooltips are unchanged (the heading
+  /// says which group, the label which window).
   Widget _buildTileGrid(BuildContext context, WidgetRef ref) {
     final range = ref.watch(statsRangeProvider);
     final period = ref.watch(statsPeriodProvider);
@@ -893,26 +875,22 @@ class JourneyWeek {
   final bool isNow;
 }
 
-/// At most this many columns in the trail.
-///
-/// A 90-day range spans thirteen weeks and All time can span years. Drawn on a
-/// 390-wide phone those are either an overflowing row or three dozen glyphs too
-/// small to read, so the trail shows the most recent eight and stops.
+/// At most this many columns in the trail. A 90-day range spans thirteen weeks
+/// and All time can span years; on a 390-wide phone that is either an
+/// overflowing row or three dozen unreadably small glyphs, so the trail shows
+/// the most recent eight.
 const int journeyMaxWeeks = 8;
 
-/// The smallest and largest [CairnGlyph] scales in the trail.
-///
-/// [CairnGlyph]'s natural size is 76×86, which is the Today card's glyph; the
-/// boards draw the trail's stones at 18–26px wide, so the whole row lives
-/// between roughly a quarter and a third of natural size.
+/// The smallest and largest [CairnGlyph] scales in the trail. The glyph's
+/// natural size is 76×86 (the Today card's); the boards draw the trail's stones
+/// at 18–26px wide, so the row lives between roughly a quarter and a third of
+/// natural size.
 const double journeyMinScale = 0.24;
 const double journeyMaxScale = 0.34;
 
-/// One column of the trail on the Week range: a single day.
-///
-/// The same visual fields as [JourneyWeek], for the same [CairnGlyph]. It is a
-/// separate type only because what it stands for differs — one calendar date
-/// rather than a week beginning on one.
+/// One column of the trail on the Week range: a single day. The same visual
+/// fields as [JourneyWeek], for the same [CairnGlyph]; a separate type only
+/// because it stands for one calendar date rather than a week beginning on one.
 class JourneyDay {
   const JourneyDay({
     required this.date,
@@ -937,16 +915,13 @@ class JourneyDay {
 }
 
 /// The size and opacity of the [index]th of [count] trail columns: a ramp from
-/// the smallest, faintest column on the left to full size and full strength on
-/// the right, where "Now" is.
+/// the smallest, faintest column on the left to full size and strength on the
+/// right, where "Now" is.
 ///
-/// The one place this lives, shared by [journeyWeeks] and [journeyDays]. Two
-/// copies of the ramp would be two chances for the weekly and daily trails to
-/// drift into slightly different visual languages — the trail is one motif, and
-/// only what a column stands for changes between ranges.
-///
-/// A single column is drawn at full trail size rather than at the bottom of the
-/// ramp — there is nothing for it to be smaller than.
+/// The one place this lives, shared by [journeyWeeks] and [journeyDays], so the
+/// weekly and daily trails can't drift into different visual languages. A
+/// single column is drawn at full trail size; there is nothing for it to be
+/// smaller than.
 ({double scale, double opacity}) _trailRamp(int index, int count) {
   if (count == 1) return (scale: journeyMaxScale, opacity: 1.0);
   final t = index / (count - 1);
@@ -959,20 +934,19 @@ class JourneyDay {
 /// The trail's columns for the **Week** range, oldest first: one per day of the
 /// current week so far, ending with today as "Now".
 ///
-/// [journeyWeeks] would give this range a single, mostly empty column. The Week
+/// [journeyWeeks] would give this range a single, mostly empty column: the Week
 /// range is the calendar week to date, so on a Tuesday it is two days old and
-/// there is almost nothing to bucket — the trail would technically be right and
-/// look broken. Bucketed by day it is a stone per day so far: one on a Monday,
-/// up to seven by Sunday. (A single column on a Monday is correct, not a bug to
-/// work around; it is drawn at full size, labelled "Now".)
+/// there is almost nothing to bucket. Bucketed by day it is a stone per day so
+/// far, one on a Monday up to seven by Sunday. (A single column on a Monday is
+/// correct; it is drawn at full size, labelled "Now".)
 ///
 /// Each day's stone count is its focus minutes against one day of the daily
-/// goal, where a week's is against seven — the same yardstick, the same absolute
-/// scale, at the granularity of the column. The stones, the ramp and the empty
-/// case all go through the helpers [journeyWeeks] uses.
+/// goal, where a week's is against seven: the same yardstick at the granularity
+/// of the column. The stones, the ramp and the empty case all go through the
+/// helpers [journeyWeeks] uses.
 ///
-/// Days after today are not drawn: they have not happened, and an empty stone
-/// would accuse the user of missing them.
+/// Days after today are not drawn: an empty stone would accuse the user of
+/// missing a day that hasn't happened.
 List<JourneyDay> journeyDays({
   required Map<String, int> minutesByDate,
   required String weekStartLocalDate,
@@ -1008,8 +982,8 @@ String _weekdayShort(String localDate) {
   return names[TimeService.parseLocalDate(localDate).weekday - 1];
 }
 
-/// What the trail's widget draws for one column, whichever range built it —
-/// so the widget does not need to know whether a column is a week or a day.
+/// What the trail's widget draws for one column, whichever range built it, so
+/// the widget doesn't need to know whether a column is a week or a day.
 class _TrailColumn {
   const _TrailColumn({
     required this.stones,
@@ -1026,27 +1000,24 @@ class _TrailColumn {
   final String label;
 }
 
-/// The trail's columns for every range but Week, oldest first.
+/// The trail's columns for every range but Week, oldest first. (Week has its
+/// own, [journeyDays]: its weekly bucket would be a single sparse column.)
 ///
-/// (Week has its own, [journeyDays] — its weekly bucket would be a single sparse
-/// column.)
-///
-/// Weekly buckets come straight off [StatsBundle.minutesByDate] — the days are
-/// already period-limited, so no second query is needed to aggregate them. Each
-/// week's stone count is its focus minutes against the *daily goal*, seven days
-/// of it: clearing the goal every day is a full four-stone cairn, and a week
-/// with no focus at all draws an empty base rather than a stone.
+/// Weekly buckets come straight off [StatsBundle.minutesByDate]; the days are
+/// already period-limited, so no second query is needed. Each week's stone
+/// count is its focus minutes against the *daily goal*, seven days of it:
+/// clearing the goal every day is a full four-stone cairn, and a week with no
+/// focus draws an empty base rather than a stone.
 ///
 /// The yardstick is absolute on purpose. Scoring each week against the best
-/// week in the trail would hand the tallest cairn to whatever week happened to
-/// be least bad, so a quiet stretch whose best week was twenty minutes would
-/// draw the same fully grown cairn as a genuinely strong one. [CairnGlyph]'s
-/// stone count means something fixed everywhere else it appears — Today, the
-/// Habits list, the milestone celebration — and it has to mean the same thing
-/// here, or two trails with identical weeks would disagree about them.
+/// week in the trail would give the tallest cairn to whichever week was least
+/// bad, so a quiet stretch whose best week was twenty minutes would draw the
+/// same fully grown cairn as a genuinely strong one. [CairnGlyph]'s stone count
+/// means something fixed everywhere else it appears (Today, the Habits list,
+/// the milestone celebration) and must mean the same here.
 ///
-/// Weeks are generated off the calendar grid rather than off the keys present
-/// in [minutesByDate], so a week the user skipped entirely still takes up its
+/// Weeks are generated off the calendar grid rather than the keys present in
+/// [minutesByDate], so a week the user skipped entirely still takes up its
 /// column instead of silently closing the gap.
 List<JourneyWeek> journeyWeeks({
   required Map<String, int> minutesByDate,
@@ -1058,10 +1029,10 @@ List<JourneyWeek> journeyWeeks({
   final thisWeek = startOfWeek(todayLocalDate);
 
   // All time has a sentinel start (`0000-01-01`), so the trail anchors on the
-  // oldest day that actually has focus minutes whenever that is later than the
-  // period start. With no focus minutes at all there is nothing to anchor on
-  // and the period start stands, which keeps a quiet 30-day range at its six
-  // empty columns instead of collapsing it to one.
+  // oldest day that actually has focus minutes when that is later than the
+  // period start. With no focus minutes at all the period start stands, which
+  // keeps a quiet 30-day range at its six empty columns instead of collapsing
+  // to one.
   final earliest = minutesByDate.keys.isEmpty
       ? null
       : minutesByDate.keys.reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
@@ -1069,9 +1040,9 @@ List<JourneyWeek> journeyWeeks({
       ? earliest
       : periodStart;
 
-  // Floored before any date arithmetic runs on it. The cap makes anything
-  // older than eight weeks unreachable anyway, and `startOfWeek` on the
-  // all-time sentinel would otherwise walk back past year zero and throw.
+  // Floored before any date arithmetic runs on it: the cap makes anything older
+  // than eight weeks unreachable anyway, and `startOfWeek` on the all-time
+  // sentinel would otherwise walk back past year zero and throw.
   final oldestDrawn =
       TimeService.addDays(thisWeek, -7 * (journeyMaxWeeks - 1));
   final firstWeek = startOfWeek(
@@ -1109,24 +1080,23 @@ List<JourneyWeek> journeyWeeks({
   ];
 }
 
-/// Stones for one column: its focus minutes against [yardstickMinutes] — what a
+/// Stones for one column: its focus minutes against [yardstickMinutes], what a
 /// full four-stone column is worth, capped at the glyph's four. A week's is
-/// seven days of the daily goal and a day's is one ([journeyWeeks] and
+/// seven days of the daily goal and a day's is one ([journeyWeeks],
 /// [journeyDays]).
 ///
-/// The guard covers a zero or negative yardstick as well as an empty column —
-/// the daily goal is user-configurable, and a divide by zero here would take the
-/// whole screen down.
+/// The guard covers a zero or negative yardstick as well as an empty column:
+/// the daily goal is user-configurable, and a divide by zero here would take
+/// the whole screen down.
 int _journeyStones(int minutes, int yardstickMinutes) {
   if (minutes <= 0 || yardstickMinutes <= 0) return 0;
   return (minutes / yardstickMinutes * 4).ceil().clamp(1, 4);
 }
 
-/// One heatmap square's tooltip: the day, and what was focused on it.
-///
-/// A zero day reads "no sessions" rather than "0m focused" — the squares
-/// already show emptiness as colour, and the sentence should say what happened
-/// rather than quantify what did not.
+/// One heatmap square's tooltip: the day, and what was focused on it. A zero
+/// day reads "no sessions" rather than "0m focused": the squares already show
+/// emptiness as colour, so the sentence says what happened rather than
+/// quantifying what didn't.
 String heatmapCellTooltip(HeatmapCell cell) {
   final date = TimeService.parseLocalDate(cell.date);
   const months = [
@@ -1164,13 +1134,11 @@ String strongestWeekdayLabel(WeekdayProfile profile) {
   return bestIndex == null ? '—' : names[bestIndex];
 }
 
-/// Check-offs per day over the selected period, to one decimal.
-///
-/// An em dash for All time: that range's period is an open sentinel, so there
-/// is no honest denominator to divide by, and inventing one ("days since the
-/// first habit"?) would be a new concept this app does not have anywhere else.
-/// Also an em dash when no habit exists — a ratio with nothing on either side
-/// is not zero, it is undefined, the same rule the habits card already follows.
+/// Check-offs per day over the selected period, to one decimal. An em dash for
+/// All time, whose period is an open sentinel with no honest denominator ("days
+/// since the first habit" would be a concept this app has nowhere else), and
+/// when no habit exists: a ratio with nothing on either side is undefined, not
+/// zero, as on the habits card.
 String habitsKeptPerDay({
   required StatsRange range,
   required StatsPeriod period,
@@ -1241,13 +1209,10 @@ class _RangeSegment extends StatelessWidget {
   }
 }
 
-/// The hero's "+12%" badge.
-///
-/// [delta] is a difference of two rates, so it is read out in percentage
-/// *points*. Nothing in this app rendered a signed delta before this chip, so
-/// the three states are set here: a gain is the success green the boards use,
-/// a loss is the danger token rather than a second green, and an exactly flat
-/// period gets no sign and a neutral fill — "0%" in green would read as good
+/// The hero's "+12%" badge. [delta] is a difference of two rates, so it is read
+/// out in percentage *points*. A gain is the success green the boards use, a
+/// loss is the danger token rather than a second green, and an exactly flat
+/// period gets no sign and a neutral fill: "0%" in green would read as good
 /// news about nothing having changed.
 class _TrendChip extends StatelessWidget {
   const _TrendChip({required this.delta});

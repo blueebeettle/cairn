@@ -14,27 +14,23 @@ import '../../../features/habits/presentation/widgets/habit_marks.dart';
 import '../../../theme/app_theme.dart';
 import 'widgets/range_scope.dart';
 
-/// The Stats screen's "See more" destination — everything the redesigned
-/// [StatsScreen] no longer has room for above the fold.
-///
-/// The cards here are moved across from the pre-redesign Stats screen
-/// unchanged: the session summary, the peak window, the day-of-week profile,
-/// the time allocation, interruptions, the focus rating, the full habit
-/// leaderboard and the habit activity heatmap. Nothing was recomputed on the
-/// way over — each one still reads the provider it always did, and this screen
-/// simply watches them itself.
+/// The Stats screen's "See more" destination: everything the redesigned
+/// [StatsScreen] has no room for above the fold. The cards are the pre-redesign
+/// ones moved across unchanged (session summary, peak window, day-of-week
+/// profile, time allocation, interruptions, focus rating, the full habit
+/// leaderboard and the habit activity heatmap); each still reads the provider
+/// it always did.
 ///
 /// The range picker stays on [StatsScreen]. `statsRangeProvider` is app-wide
-/// state, so whatever range was selected there is still in force here and
-/// these cards move with it, without this screen owning a second picker. The
-/// selected range is named at the top so the numbers are not unlabelled.
+/// state, so the selected range is still in force here and the cards move with
+/// it; the selected range is named at the top so the numbers are not
+/// unlabelled.
 ///
 /// Two things here are deliberately NOT range-bound, and sit under that header
 /// all the same: the habit leaderboard's current streaks (whole-history, never
-/// re-sliced — see `habit_statistics.dart`) and the habit activity heatmap
-/// (a trailing year). Both wear the same [FixedRangePill] the main Stats screen
-/// uses, and the header says what the pill means, so the header naming a range
-/// is not read as covering them.
+/// re-sliced; see `habit_statistics.dart`) and the habit activity heatmap (a
+/// trailing year). Both wear the [FixedRangePill] the main Stats screen uses,
+/// so the header naming a range isn't read as covering them.
 class StatsDetailScreen extends ConsumerWidget {
   const StatsDetailScreen({super.key});
 
@@ -988,11 +984,9 @@ class StatsDetailScreen extends ConsumerWidget {
                   return Text('—', style: textTheme.displaySmall);
                 }
 
-                // Grouped into weekday columns exactly as the focus
-                // heatmap on `StatsScreen` groups `HeatmapCell`s —
-                // duplicated rather than shared, since the two heatmaps
-                // carry different cell types and this feature is edited
-                // independently of the focus one.
+                // Grouped into weekday columns as the focus heatmap on
+                // `StatsScreen` groups `HeatmapCell`s: duplicated rather than
+                // shared, since the two heatmaps carry different cell types.
                 final columns = <List<HabitHeatmapCell?>>[];
                 var currentColumn = List<HabitHeatmapCell?>.filled(7, null);
                 var lastRowIndex = -1;
