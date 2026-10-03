@@ -51,6 +51,17 @@ dependencies:
   supabase_flutter: ^2.17.2
   home_widget: ^0.10.0
 
+  # In-app updater (lib/core/updates). http and crypto were already resolved
+  # transitively (via supabase_flutter); they are declared here because the
+  # updater imports them directly, and importing an undeclared package fails
+  # the depend_on_referenced_packages lint. device_info_plus supplies the
+  # device's ABI list for picking the right APK; open_filex hands the verified
+  # APK to Android's package installer.
+  http: ^1.6.0
+  crypto: ^3.0.7
+  device_info_plus: ^13.3.0
+  open_filex: ^4.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

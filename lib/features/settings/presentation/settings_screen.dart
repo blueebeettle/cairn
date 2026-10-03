@@ -8,10 +8,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/widgets/cairn_card.dart';
 import '../../../data/providers/database_provider.dart';
+import '../../../data/providers/update_providers.dart';
 import '../../../theme/app_theme.dart';
 import '../../backup/presentation/backup_restore_screen.dart';
 import '../../reminders/reminder_service.dart';
 import '../../tasks/presentation/archived_tasks_screen.dart';
+import '../../updates/presentation/check_for_updates_tile.dart';
 
 /// The Settings screen per POLISH §4 and §2.
 ///
@@ -22,7 +24,8 @@ import '../../tasks/presentation/archived_tasks_screen.dart';
 /// 4. Appearance (System / Light / Dark theme)
 /// 5. Notifications (Permission status & system settings link)
 /// 6. Data (Backup, Sync & Accounts, Archived tasks)
-/// 7. About (Version, from beetlebyte, Open-source licenses)
+/// 7. About (Version, Check for updates [Android only], from beetlebyte,
+///    Open-source licenses)
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -641,6 +644,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                             : '1.0.0 (1)',
                       ),
                     ),
+                    // Android only: nothing else can update itself, so
+                    // elsewhere there is no row rather than a dead one.
+                    if (ref.watch(updatesSupportedProvider))
+                      const CheckForUpdatesTile(),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Align(

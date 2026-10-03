@@ -16,6 +16,22 @@
       is not.
     -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!--
+      Network access. Flutter's template declares INTERNET only in the debug
+      and profile manifests (for hot reload and the VM service), so a release
+      APK that never declares it here has no network at all: every request
+      fails before leaving the device. The in-app updater's GitHub check and
+      download need it, as does Supabase.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+      Lets the in-app updater hand a downloaded APK to Android's package
+      installer. Declaring it is what makes Android show its own "allow
+      installs from this source" prompt the first time, so the app never
+      requests the permission itself. Cairn ships as a direct APK; a Play
+      Store listing would need a declaration form for this permission.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:label="Cairn"

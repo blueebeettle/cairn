@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:home_widget/home_widget.dart';
 
+import '../../../core/updates/update_decision.dart';
 import '../../../data/providers/database_provider.dart';
 import '../../../data/providers/habit_providers.dart';
+import '../../../data/providers/update_providers.dart';
 import '../../habits/domain/milestone_celebration_controller.dart';
 import '../../habits/presentation/habit_detail_screen.dart';
 import '../../habits/presentation/habits_screen.dart';
@@ -17,6 +19,7 @@ import '../../tasks/presentation/tasks_screen.dart';
 import '../../timer/presentation/timer_controller.dart';
 import '../../timer/presentation/timer_screen.dart';
 import '../../today/presentation/today_screen.dart';
+import '../../updates/presentation/update_dialog.dart';
 import '../../widgets/home_screen_widget_service.dart';
 
 /// Root navigation shell with Material 3 NavigationBar per SPEC.md Phase 01.
@@ -44,6 +47,10 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
   Timer? _dayWatch;
   String? _lastLogicalDay;
   StreamSubscription<Uri?>? _widgetClickSub;
+
+  /// Guards the launch-time update dialog so it can only ever open once, even
+  /// if the provider were to emit twice.
+  bool _updatePromptShown = false;
 
   @override
   void initState() {
@@ -150,9 +157,31 @@ class _NavigationShellState extends ConsumerState<NavigationShell>
     );
   }
 
+  /// Opens the update dialog the launch-time check asked for.
+  ///
+  /// Deferred to after the current frame so it never lands mid-build, and so
+  /// the app is already on screen and usable when it appears — the check
+  /// itself began only once this shell built, so none of this sits on the
+  /// startup path. Which dialog (dismissible or not) is entirely
+  /// `decideUpdateAction`'s answer, already inside [action].
+  void _promptForUpdate(UpdateAction action) {
+    if (action is NoAction || _updatePromptShown) return;
+    _updatePromptShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showUpdateDialog(context, action);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentIndex = ref.watch(navigationIndexProvider);
+    // Resolves to NoAction on any failure, and on every platform but Android,
+    // so this never surfaces an error or touches the network off-Android.
+    ref.listen<AsyncValue<UpdateAction>>(launchUpdateActionProvider, (_, next) {
+      final action = next.valueOrNull;
+      if (action != null) _promptForUpdate(action);
+    });
     ref.listen<String?>(pendingHabitDetailProvider, (_, next) {
       if (next != null) _openPendingHabit();
     });
