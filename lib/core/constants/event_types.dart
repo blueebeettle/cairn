@@ -17,8 +17,8 @@ abstract final class EventTypes {
   static const taskDeleted = 'task_deleted';
 
   // Habit events (SPEC.md §10.1). The four check-off events were reserved in
-  // v1; the lifecycle events below were added with the feature, because §0
-  // requires every user action to be an event and creating a habit is one.
+  // v1; the lifecycle events were added with the feature, since §0 requires
+  // every user action to be an event.
   static const habitCreated = 'habit_created';
   static const habitUpdated = 'habit_updated';
   static const habitArchived = 'habit_archived';
@@ -35,10 +35,9 @@ abstract final class EventTypes {
   static const habitNoteSet = 'habit_note_set';
 
   // Reminder config events (SPEC.md §10.4/§11). Each carries the item's
-  // *entire* desired set of reminders in its payload — replaying the latest
-  // one per subject reproduces the live `task_reminder_offsets` /
-  // `habit_reminder_times` rows exactly, so no per-row add/remove events are
-  // needed.
+  // *entire* desired set of reminders, so replaying the latest one per subject
+  // reproduces the live `task_reminder_offsets` / `habit_reminder_times` rows
+  // and no per-row events are needed.
   static const taskReminderOffsetsSet = 'task_reminder_offsets_set';
   static const habitReminderTimesSet = 'habit_reminder_times_set';
 }
