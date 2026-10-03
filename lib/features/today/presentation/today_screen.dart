@@ -23,14 +23,14 @@ import '../../timer/presentation/timer_controller.dart';
 import 'widgets/grow_your_cairn_card.dart';
 import 'widgets/momentum_week_strip.dart';
 
-/// The Today screen rebuild per SPEC.md and M3 component theming.
-///
-/// Features:
-/// - One date inline with ‹ › (forward arrow disables on today).
+/// The Today screen per SPEC.md and M3 component theming:
+/// - One date inline with ‹ › (the forward arrow disables on today).
 /// - Small chips for Streak and Best ever.
 /// - 7-day bar strip powered by [StatsRepository.watchLast7DaysSummary].
-/// - Primary circular focus-progress ring (today's minutes against goal, tap to start session).
-/// - Readable session list from [focus_sessions] (duration, mode, start-end, interruptions, de-emphasized abandoned).
+/// - Primary circular focus-progress ring (today's minutes against goal; tap to
+///   start a session).
+/// - Readable session list from [focus_sessions] (duration, mode, start-end,
+///   interruptions, abandoned de-emphasized).
 class TodayScreen extends ConsumerStatefulWidget {
   const TodayScreen({super.key});
 
@@ -134,10 +134,10 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
               ref.read(themeModeProvider.notifier).state = next;
             },
           ),
-          // Today button (enabled when not on today to quickly return).
-          // Compact padding: this bar carries five actions, and at a 200%
-          // font scale the default TextButton padding is what tips the row
-          // into an overflow.
+          // Today button (enabled when not on today, to return quickly).
+          // Compact padding: this bar carries five actions, and at a 200% font
+          // scale the default TextButton padding is what tips the row into
+          // overflow.
           TextButton(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -209,9 +209,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             ),
             const SizedBox(height: 2),
 
-            // ── 1b. Momentum week strip ──────────────────────────────────────
-            // Mon-Sun of the viewed week; today wears the same ring-and-glow
-            // as the CairnGlyph marker so "now" reads as one device.
+            // Momentum week strip: Mon-Sun of the viewed week; today wears the
+            // same ring-and-glow as the CairnGlyph marker so "now" reads as one
+            // device.
             MomentumWeekStrip(
               weekOf: currentViewDate,
               todayLocalDate: todayLocalDate,
@@ -260,23 +260,20 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             ),
             const SizedBox(height: 4),
 
-            // ── 2b. Grow your cairn ──────────────────────────────────────────
-            // Today only: the glyph tracks today's check-offs, and growing it
-            // under a past date would be claiming progress that isn't there.
-            // Renders nothing when no habit is due.
+            // Grow your cairn: today only, since the glyph tracks today's
+            // check-offs and growing it under a past date would claim progress
+            // that isn't there. Renders nothing when no habit is due.
             if (isToday)
               GrowYourCairnCard(
                 currentStreakDays: focusStats.currentStreakDays,
               ),
             const SizedBox(height: 20), // chips/cairn -> ring 20dp
 
-            // ── 4. Primary Element: FocusRing, in the card system ────────────
-            // The ring used to sit bare on the page between two cards. Every
-            // other primary number in this redesign — the week strip above,
-            // the cairn card, the Stats hero — lives on a 22-radius shadowed
-            // surface, and this is the most important number on the screen.
-            // Ring geometry, colours and the caption are untouched; only the
-            // container around them is new.
+            // Primary element: FocusRing, in the card system. Every other
+            // primary number in this redesign (the week strip, the cairn card,
+            // the Stats hero) lives on a 22-radius shadowed surface, and this
+            // is the most important number on the screen. Ring geometry,
+            // colours and caption are untouched; only the container is new.
             Container(
               decoration: BoxDecoration(
                 color: CardChrome.card(context),
@@ -286,10 +283,10 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                 type: MaterialType.transparency,
                 borderRadius: BorderRadius.circular(22),
                 child: InkWell(
-                  // One tap target over the whole card, so the padding, the
-                  // eyebrow and the caption all lead where the ring already
-                  // did. The ring and caption keep their own handlers; these
-                  // nest harmlessly and all three do the same thing.
+                  // One tap target over the whole card, so the padding, eyebrow
+                  // and caption lead where the ring does. The ring and caption
+                  // keep their own handlers; they nest harmlessly and all three
+                  // do the same thing.
                   borderRadius: BorderRadius.circular(22),
                   onTap: () {
                     ref.read(navigationIndexProvider.notifier).state = 1;
@@ -368,11 +365,10 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             _buildTasksSection(context, ref, tasksAsync, currentViewDate, isToday),
             const SizedBox(height: 28), // TASKS -> HABITS/SESSIONS 28dp
 
-            // ── 5b. Habits due today ─────────────────────────────────────────
-            // Today only: the section is today's check-offs, and showing them
-            // under a past date would invite checking off the wrong day.
-            // Renders nothing (and carries its own bottom gap) when no habit
-            // is scheduled today.
+            // Habits due today: today only, since the section is today's
+            // check-offs and showing them under a past date would invite
+            // checking off the wrong day. Renders nothing (and carries its own
+            // bottom gap) when no habit is scheduled today.
             if (isToday) const TodayHabitsSection(),
 
             // ── 6. Focus Sessions List ───────────────────────────────────────

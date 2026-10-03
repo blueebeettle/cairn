@@ -32,13 +32,13 @@ class MomentumDay {
   /// hollow-dashed instead of empty-filled.
   final bool isFuture;
 
-  /// The share of this day's scheduled habits that are done, 0.0–1.0 — or null
+  /// The share of this day's scheduled habits that are done, 0.0–1.0, or null
   /// when nothing on the day could be scored: no habit was scheduled, every one
-  /// was frozen, or the day has not happened.
+  /// was frozen, or the day hasn't happened.
   ///
-  /// Null is not zero, exactly as on `WeeklyRecapDay.rate` and everywhere else
-  /// in the app. 0.0 is "habits were due and none got done"; null is "nothing
-  /// was asked of you", and the strip draws the two differently.
+  /// Null is not zero, as on `WeeklyRecapDay.rate` and everywhere else: 0.0 is
+  /// "habits were due and none got done", null is "nothing was asked of you",
+  /// and the strip draws the two differently.
   ///
   /// Today's is progress through a day still open (see
   /// `HabitCompletionRate.ofToday`): a habit not yet done counts as "not yet",
@@ -54,20 +54,18 @@ class MomentumDay {
 ///
 /// Geometry from the "Momentum hero" card in
 /// `claude-outputs/designs/Today.dc.html`: 26x30 columns, 30x34 for today,
-/// radii tighter on top than bottom — the same bar language as [CairnGlyph]'s
+/// radii tighter on top than bottom, the same bar language as [CairnGlyph]'s
 /// stones. Today's column wears [CairnGlyph.markerHalo], so "now" is marked
-/// with the same ring-and-glow device in both places.
+/// with the same ring-and-glow in both places.
 ///
-/// Every pip grades by how much of that day's habits got done, in the same
-/// "darker means more" ramp as the Stats activity heatmap
-/// (`AppTokens.heatmap`, via [completionTier]): a day where one habit in four
-/// was done is a light tint, a fully completed day the darkest step. Today is
-/// the exception on colour — it stays the brand primary with its halo whatever
-/// its rate, because today is in progress rather than behind — and shows its
-/// progress as a fill instead (see [_DayColumn]).
+/// Every pip grades by how much of that day's habits got done, on the same
+/// "darker means more" ramp as the Stats activity heatmap (`AppTokens.heatmap`,
+/// via [completionTier]). Today is the exception on colour: it stays the brand
+/// primary with its halo whatever its rate, because it is in progress rather
+/// than behind, and shows progress as a fill instead (see [_DayColumn]).
 ///
-/// Reads [habitSnapshotsProvider] directly — the per-day completion is already
-/// in each snapshot's resolved outcomes, so this needs no provider of its own.
+/// Reads [habitSnapshotsProvider] directly; the per-day completion is already
+/// in each snapshot's resolved outcomes.
 class MomentumWeekStrip extends ConsumerWidget {
   const MomentumWeekStrip({
     super.key,
@@ -89,34 +87,31 @@ class MomentumWeekStrip extends ConsumerWidget {
 
   final ValueChanged<String>? onDayTap;
 
-  /// The one-letter initial for [localDate]'s own weekday.
-  ///
-  /// Shared so the Habits weekly recap labels its bars the same way — the two
-  /// strips show the same week and must not disagree about which letter sits
-  /// over which date.
+  /// The one-letter initial for [localDate]'s own weekday. Shared so the Habits
+  /// weekly recap labels its bars the same way: both strips show the same week
+  /// and must agree on which letter sits over which date.
   static String weekdayLabel(String localDate) =>
       weekdayInitials[TimeService.parseLocalDate(localDate).weekday - 1];
 
   /// Indexed by `DateTime.weekday - 1`, so Monday is 0 and Sunday is 6.
   static const List<String> weekdayInitials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  /// The seven days of the week containing [weekOf], starting on
-  /// [weekStart], each with its completion rate pooled from [snapshots].
+  /// The seven days of the week containing [weekOf], starting on [weekStart],
+  /// each with its completion rate pooled from [snapshots].
   ///
   /// A day's rate is the share of that day's scheduled habits that are done,
-  /// via [HabitCompletionRate.ofDay] — the same function, over the same
-  /// `HabitStatsInput` mapping ([HabitSnapshotStatsInput.toStatsInput]), that
-  /// draws the Habits screen's weekly recap, so the two cannot disagree about
-  /// a day. For a settled day a frozen habit is left out of both sides; for
-  /// today a habit still to do counts as "not yet", so progress shows before
-  /// the day resolves. A day nothing could be scored on has a null rate.
+  /// via [HabitCompletionRate.ofDay] over the same `HabitStatsInput` mapping
+  /// ([HabitSnapshotStatsInput.toStatsInput]) that draws the Habits screen's
+  /// weekly recap, so the two can't disagree about a day. For a settled day a
+  /// frozen habit is left out of both sides; for today a habit still to do
+  /// counts as "not yet", so progress shows before the day resolves. A day
+  /// nothing could be scored on has a null rate.
   ///
   /// The start-of-week delta is the same `(weekday - weekStart + 7) % 7` that
-  /// `TimeService.startOfWeek` uses, rather than a second way of saying it.
-  /// Labels come from each date's own weekday, so a Sunday-start week reads
-  /// S M T W T F S and still lines up with the dates underneath — a fixed
-  /// positional array silently mislabelled every column the moment the
-  /// setting was anything but Monday.
+  /// `TimeService.startOfWeek` uses. Labels come from each date's own weekday,
+  /// so a Sunday-start week reads S M T W T F S and still lines up with the
+  /// dates underneath; a fixed positional array mislabelled every column
+  /// whenever the setting wasn't Monday.
   static List<MomentumDay> daysFor({
     required String weekOf,
     required String todayLocalDate,
@@ -159,11 +154,9 @@ class MomentumWeekStrip extends ConsumerWidget {
       snapshots: snapshots,
       weekStart: weekStart,
     );
-    // "Kept" is a day you fully kept — every scheduled habit done. Now that a
-    // partly-done day shows as a partial fill rather than reading as a flat
-    // yes, counting it here would let the header say "7 / 7" over a row of
-    // half-filled pips. Full days keep the figure's old meaning ("a day you
-    // kept"); the pips carry the partial credit.
+    // "Kept" is a day you fully kept: every scheduled habit done. Counting a
+    // partly-done day (now drawn as a partial fill) would let the header say "7
+    // / 7" over a row of half-filled pips. The pips carry the partial credit.
     final kept = days.where((d) => d.isFullyCompleted).length;
 
     return Card(
@@ -350,20 +343,20 @@ class _DayColumn extends StatelessWidget {
 
 /// The part of today's pip that is not done yet.
 ///
-/// Today's pip is always the brand primary with its halo — see the fill choice
-/// in [_DayColumn.build] — so it cannot show progress by shading. It shows it
-/// as a level instead: this covers the top of the pip in a pale tint in
-/// proportion to what is still to do, leaving the solid primary rising from
-/// the bottom. All done draws no cover at all, so a finished today is exactly
-/// the solid pip it always was.
+/// Today's pip is always the brand primary with its halo (see the fill choice
+/// in [_DayColumn.build]), so it can't show progress by shading. It shows it as
+/// a level instead: this covers the top of the pip in a pale tint in proportion
+/// to what is still to do, leaving the solid primary rising from the bottom.
+/// All done draws no cover, so a finished today is exactly the solid pip it
+/// always was.
 ///
 /// Inset by [_ring] on every side so the primary reads as a deliberate outline
-/// around the unfilled part — a vessel filling up — rather than as a fringe of
+/// around the unfilled part, a vessel filling up, rather than a fringe of
 /// anti-aliasing where two shapes meet.
 ///
-/// The cover's tint carries the null-vs-zero distinction for today, the same
-/// way the empty shade does on the other days: a faint neutral when nothing
-/// was scheduled, a primary tint when habits were due and none are done yet.
+/// The cover's tint carries the null-vs-zero distinction for today, as the
+/// empty shade does on other days: a faint neutral when nothing was scheduled,
+/// a primary tint when habits were due and none are done yet.
 class _TodayUnfilled extends StatelessWidget {
   const _TodayUnfilled({required this.rate, required this.radius});
 
@@ -376,11 +369,11 @@ class _TodayUnfilled extends StatelessWidget {
   static const double _ring = 1.5;
 
   /// Once today is strictly between nothing and everything, neither the filled
-  /// nor the unfilled part may be thinner than this share of the pip. Without
-  /// a floor, one tick out of twenty habits is a 1px sliver — indistinguishable
-  /// from not having started — and 19 of 20 is indistinguishable from done. The
-  /// spoken label and the header carry the exact figure; this only has to keep
-  /// "started" and "nearly there" visible.
+  /// nor the unfilled part may be thinner than this share of the pip. Without a
+  /// floor, one tick out of twenty habits is a 1px sliver indistinguishable
+  /// from not having started, and 19 of 20 from done. The spoken label and
+  /// header carry the exact figure; this only keeps "started" and "nearly
+  /// there" visible.
   static const double _minShare = 0.12;
 
   @override

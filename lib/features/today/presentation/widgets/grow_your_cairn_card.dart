@@ -22,13 +22,13 @@ int cairnStoneCount({required int checked, required int total}) {
 
 /// The "Grow your cairn" card: the glyph grows as today's habits get checked.
 ///
-/// Layout from `claude-outputs/designs/Today.dc.html` — 22 radius, 18/18/18/16
+/// Layout from `claude-outputs/designs/Today.dc.html`: 22 radius, 18/18/18/16
 /// padding, a 16 gap between the glyph and the text, outlined card on
 /// `surfaceContainerLow`.
 ///
-/// Renders nothing when no habit is due today, the same way
-/// `TodayHabitsSection` does: an empty cairn with no way to grow it is just a
-/// reminder that the screen has nothing to say.
+/// Renders nothing when no habit is due today, like `TodayHabitsSection`: an
+/// empty cairn with no way to grow it is just a reminder that the screen has
+/// nothing to say.
 class GrowYourCairnCard extends ConsumerWidget {
   const GrowYourCairnCard({
     super.key,
