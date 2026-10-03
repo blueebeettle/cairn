@@ -10,23 +10,22 @@ import '../../../theme/app_theme.dart';
 
 /// The first-launch tutorial: five short slides, shown once, before the app.
 ///
-/// It introduces Cairn as a whole — what it is, what the five tabs are for,
-/// and the quick-capture syntax that nothing else in the app explains until a
-/// user stumbles onto it. It deliberately does NOT re-teach each screen. Every
-/// screen already has a `FeatureInfoCard` and a permanent `FeatureInfoButton`
-/// that own the detail, so the fourth slide points at that "?" pattern instead
-/// of repeating what it says, and the two cannot drift apart.
+/// It introduces Cairn as a whole: what it is, what the five tabs are for, and
+/// the quick-capture syntax that nothing else explains until a user stumbles
+/// onto it. It does NOT re-teach each screen; every screen already has a
+/// `FeatureInfoCard` and a permanent `FeatureInfoButton` that own the detail,
+/// so the fourth slide points at that "?" pattern rather than repeating it, and
+/// the two can't drift apart.
 ///
 /// **Skipping is not partial.** "Skip" and "Get started" both finish the
 /// tutorial outright through [OnboardingCompletedNotifier.complete]; there is
-/// no "seen some of it" state to resume. And that is the *only* place the
-/// flag is written — merely opening this screen writes nothing, so a user who
-/// force-quits on slide three sees the tutorial again next launch instead of
-/// being marked as done by an app they never got through.
+/// no "seen some of it" state. That is the *only* place the flag is written:
+/// merely opening this screen writes nothing, so a user who force-quits on
+/// slide three sees the tutorial again rather than being marked done.
 ///
-/// Built from the app's own pieces — [CairnCard]/[CardChrome], [CairnGlyph]
-/// and the theme's tokens — with no onboarding package, in keeping with the
-/// deliberately short dependency list.
+/// Built from the app's own pieces ([CairnCard]/[CardChrome], [CairnGlyph], the
+/// theme's tokens) with no onboarding package, to keep the dependency list
+/// short.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -193,13 +192,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 // Slides
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// The shared shape of every slide: a visual, a heading, a plain paragraph
-/// and optionally more.
-///
-/// Scrolls when it has to. The slides are short at normal text size, but at a
-/// 200% font scale on a small phone the tasks slide is taller than the space
-/// between the Skip row and the buttons, and clipping the syntax examples
-/// would defeat the point of that slide.
+/// The shared shape of every slide: a visual, a heading, a plain paragraph and
+/// optionally more. Scrolls when it has to: at a 200% font scale on a small
+/// phone the tasks slide is taller than the space between the Skip row and the
+/// buttons, and clipping the syntax examples would defeat the slide.
 class _SlideFrame extends StatelessWidget {
   const _SlideFrame({
     required this.visual,
@@ -312,13 +308,11 @@ class _TodayFocusSlide extends StatelessWidget {
   }
 }
 
-/// Slide 3 — the quick-capture syntax.
-///
-/// The one thing here that is genuinely easy to miss: typing a date, a
-/// priority, a tag or an estimate straight into a task's title. The rows are
-/// the real syntax `TaskParser` accepts — see the Quick Capture sheet's own
-/// legend — and say `#tag` because that is what `#` produces: a tag, not a
-/// project. A task's project is chosen separately in the sheet.
+/// Slide 3: the quick-capture syntax, the one thing here that is genuinely easy
+/// to miss (typing a date, priority, tag or estimate straight into a task's
+/// title). The rows are the real syntax `TaskParser` accepts (see the Quick
+/// Capture sheet's own legend) and say `#tag` because that is what `#`
+/// produces: a tag, not a project, which is chosen separately in the sheet.
 class _TasksSlide extends StatelessWidget {
   const _TasksSlide();
 
@@ -403,9 +397,8 @@ class _TabBadges extends StatelessWidget {
 }
 
 /// One tab's icon, drawn the way the navigation bar draws it, with its name.
-///
-/// The icons are the navigation bar's own selected icons, so the tutorial and
-/// the bar it is describing read as the same thing.
+/// The icons are the bar's own selected icons, so the tutorial and the bar it
+/// describes read as the same thing.
 class _TabBadge extends StatelessWidget {
   const _TabBadge({required this.icon, required this.label});
 
@@ -538,11 +531,11 @@ class _SyntaxRow extends StatelessWidget {
       );
     }
 
-    // Otherwise a two-column table: every token in the same-width column, so
-    // the explanations line up. Left to wrap freely, a short explanation sat
-    // beside its token and a long one dropped below it, and the four rows
-    // looked ragged. The column grows with the text scale so the widest token
-    // (`!p1 – !p4`) still fits it.
+    // Otherwise a two-column table with every token in the same-width column so
+    // the explanations line up; left to wrap freely, a short explanation sat
+    // beside its token and a long one dropped below it, and the rows looked
+    // ragged. The column grows with text scale so the widest token (`!p1 –
+    // !p4`) still fits.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
