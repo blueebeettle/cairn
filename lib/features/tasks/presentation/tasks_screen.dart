@@ -991,11 +991,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   }
 }
 
-/// Today / Upcoming / Inbox, as a tinted track with one filled pill.
-///
-/// The same control the Stats range picker and the Focus mode picker use.
-/// It was a `SegmentedButton` — three joined outlines with a pale selected
-/// fill — which is a third look for what is the same kind of choice.
+/// Today / Upcoming / Inbox, as a tinted track with one filled pill: the same
+/// control the Stats range picker and the Focus mode picker use, rather than a
+/// third look (a `SegmentedButton`) for the same kind of choice.
 class _TaskViewPicker extends StatelessWidget {
   const _TaskViewPicker({required this.selected, required this.onSelected});
 

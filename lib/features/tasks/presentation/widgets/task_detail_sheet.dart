@@ -96,11 +96,11 @@ class _TaskDetailSheetState extends ConsumerState<TaskDetailSheet> {
   late String? _recurrenceMode;
   late List<String> _tags;
 
-  /// Configured countdown offsets, minutes before the due time. Only
-  /// meaningful for a task with a specific due time — an all-day task has
-  /// nothing to count down to and is covered by the daily digest instead.
-  /// Loaded asynchronously for an existing timed task (`_loadReminderOffsets`)
-  /// since it now lives in its own table rather than a scalar on the task.
+  /// Configured countdown offsets, minutes before the due time. Only meaningful
+  /// for a task with a specific due time: an all-day task has nothing to count
+  /// down to and is covered by the daily digest instead. Loaded asynchronously
+  /// for an existing timed task (`_loadReminderOffsets`) since it lives in its
+  /// own table rather than a scalar on the task.
   List<int> _reminderOffsetsMin = [];
 
   bool get isCreateMode => widget.taskDetails == null;
@@ -274,11 +274,11 @@ class _TaskDetailSheetState extends ConsumerState<TaskDetailSheet> {
 
     if (!mounted) return;
 
-    // Close the sheet first, then ask. Prompting while the sheet is still up
-    // stacks a dialog on top of it and leaves the task the user just created
-    // hidden behind both; it also means the sheet cannot close until the
-    // dialog is answered. Read the repository and grab the root navigator's
-    // context before popping, because this widget is disposed by then.
+    // Close the sheet first, then ask: prompting while the sheet is up stacks a
+    // dialog on top of it, hides the task the user just created behind both,
+    // and means the sheet can't close until the dialog is answered. Read the
+    // repository and grab the root navigator's context before popping, because
+    // this widget is disposed by then.
     final settingsRepo = ref.read(settingsRepositoryProvider);
     final rootContext = Navigator.of(context, rootNavigator: true).context;
     Navigator.of(context).pop();

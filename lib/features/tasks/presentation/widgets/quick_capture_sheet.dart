@@ -538,10 +538,9 @@ class _SyntaxRow extends StatelessWidget {
   }
 }
 
-/// One pill in the quick-capture syntax legend.
-///
-/// The priority chip is the accented one, matching the mockup: it is the
-/// token people reach for first and the only one with a closed set of values.
+/// One pill in the quick-capture syntax legend. The priority chip is the
+/// accented one, as in the mockup: it is the token people reach for first and
+/// the only one with a closed set of values.
 class _LegendChip extends StatelessWidget {
   const _LegendChip(this.label, {this.accent = false});
 

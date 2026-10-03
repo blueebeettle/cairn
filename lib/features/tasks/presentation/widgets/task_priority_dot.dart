@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// The 7px priority dot beside a task title, per the rows in
+/// The 7px priority dot beside a task title, per
 /// `claude-outputs/designs/Tasks.dc.html`.
 ///
-/// Takes the colour rather than the priority: `_buildTaskCard` already owns
-/// the `priority -> colour` switch, and two copies of that mapping would
-/// eventually disagree.
+/// Takes the colour rather than the priority: `_buildTaskCard` already owns the
+/// `priority -> colour` switch, and two copies would eventually disagree.
 ///
-/// Renders nothing when [color] is transparent — priority 4 and unset both
-/// resolve that way, and the mockup's unprioritised rows have their title
-/// flush left rather than indented past an invisible dot.
+/// Renders nothing when [color] is transparent (priority 4 and unset both
+/// resolve that way), so unprioritised rows have their title flush left rather
+/// than indented past an invisible dot.
 class TaskPriorityDot extends StatelessWidget {
   const TaskPriorityDot({super.key, required this.color, this.size = 7});
 

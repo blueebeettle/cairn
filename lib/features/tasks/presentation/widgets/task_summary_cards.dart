@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/app_theme.dart';
 
-/// "Today's progress" — how much of today's list is cleared.
+/// "Today's progress": how much of today's list is cleared.
 ///
 /// Layout from `claude-outputs/designs/Tasks.dc.html`: an uppercase muted
 /// label, the count on the trailing edge in the accent, and a 10px rounded
 /// track under both. The bar fills as tasks get cleared, so it reads as
-/// progress rather than as a backlog.
+/// progress rather than a backlog.
 class TodayProgressCard extends StatelessWidget {
   const TodayProgressCard({
     super.key,
